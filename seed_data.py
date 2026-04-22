@@ -1,83 +1,158 @@
 import os
+import time
 from sqlalchemy import create_engine, text
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from dotenv import load_dotenv
 
-# Load cấu hình
 load_dotenv()
-DB_URL = os.getenv("DATABASE_URL")
+DB_URL    = os.getenv("DATABASE_URL")
 GEMINI_KEY = os.getenv("GEMINI_API_KEY")
 
-def seed_database():
-    print("🚀 Bắt đầu quá trình Vectorization...")
+# Số sản phẩm gửi embed 1 lần — tránh rate limit
+_BATCH_SIZE = 20
 
-    # 1. Khởi tạo công cụ nhúng (Embeddings)
+
+def _build_content(row: dict) -> str:
+    """
+    Tạo chuỗi text đại diện cho sản phẩm.
+    Nguyên tắc: nội dung phải giống ngôn ngữ tự nhiên mà người dùng hay tìm,
+    tránh viết theo format máy móc.
+    """
+    parts: list[str] = []
+
+    # Danh mục và thương hiệu đặt đầu — trọng số cao trong embedding
+    if row["category_name"]:
+        parts.append(f"Danh mục: {row['category_name']}.")
+    if row["brand_name"]:
+        parts.append(f"Thương hiệu: {row['brand_name']}.")
+
+    parts.append(f"Sản phẩm: {row['name']}.")
+
+    # Phân khúc giá (ngôn ngữ tự nhiên giúp khớp với "giá rẻ", "cao cấp")
+    price = int(row["base_price"])
+    if price < 500_000:
+        tier_label = "giá rẻ, phổ thông"
+    elif price < 1_500_000:
+        tier_label = "tầm trung"
+    else:
+        tier_label = "cao cấp, chuyên nghiệp"
+    parts.append(f"Giá: {price:,} VNĐ ({tier_label}).")
+
+    if row["description"]:
+        parts.append(f"Mô tả: {row['description']}.")
+
+    # Màu sắc, kích cỡ, chất liệu — quan trọng cho filter phủ định
+    if row["available_attributes"]:
+        parts.append(f"Các phiên bản màu sắc và kích cỡ: {row['available_attributes']}.")
+
+    # Giới tính — giúp khớp khi người dùng hỏi "nam" / "nữ"
+    if row["gender_tags"]:
+        parts.append(f"Phù hợp cho: {row['gender_tags']}.")
+
+    # Môn thể thao phù hợp
+    if row["sport_tags"]:
+        parts.append(f"Phù hợp cho môn: {row['sport_tags']}.")
+
+    return " ".join(parts)
+
+
+def seed_database():
+    print("🚀 Bắt đầu Vectorization...")
+
     embeddings_model = GoogleGenerativeAIEmbeddings(
-        model="gemini-embedding-2-preview", 
-        google_api_key=GEMINI_KEY
+        model="gemini-embedding-2-preview",
+        google_api_key=GEMINI_KEY,
     )
 
-    # 2. Kết nối Database
     engine = create_engine(DB_URL)
-    
+
     with engine.connect() as conn:
-        # Xóa dữ liệu cũ trong bảng product_embeddings trước khi nhúng lại (tùy chọn)
         conn.execute(text("TRUNCATE TABLE product_embeddings;"))
         conn.commit()
-        print("🗑️ Đã dọn sạch bảng product_embeddings cũ.")
 
-        # 3. Kéo thêm category_id, brand_id và tên Brand để làm content xịn hơn
-        query = """
-            SELECT 
-                p.id, p.name, p.description, p.base_price,
-                p.category_id, p.brand_id,
-                c.name as category_name,
-                b.name as brand_name
+        # Query đầy đủ: gom màu sắc/size, thêm gender_tags và sport_tags từ ProductSpec
+        query = text("""
+            SELECT
+                p.id,
+                p.name,
+                p.description,
+                p.base_price,
+                p.category_id,
+                p.brand_id,
+                c.name  AS category_name,
+                b.name  AS brand_name,
+                (
+                    SELECT string_agg(DISTINCT av.value, ', ' ORDER BY av.value)
+                    FROM product_skus sk
+                    JOIN sku_values   sv ON sv.product_sku_id = sk.id
+                    JOIN attribute_values av ON av.id = sv.attribute_value_id
+                    WHERE sk.product_id = p.id
+                ) AS available_attributes,
+                -- Lấy giới tính từ ProductSpec (nếu có attribute tên 'Giới tính')
+                (
+                    SELECT ps.value
+                    FROM product_specs ps
+                    JOIN attributes a ON a.id = ps.attribute_id
+                    WHERE ps.product_id = p.id
+                      AND LOWER(a.name) IN ('giới tính', 'gender')
+                    LIMIT 1
+                ) AS gender_tags,
+                -- Lấy môn thể thao từ ProductSpec (nếu có attribute tên 'Môn thể thao')
+                (
+                    SELECT ps.value
+                    FROM product_specs ps
+                    JOIN attributes a ON a.id = ps.attribute_id
+                    WHERE ps.product_id = p.id
+                      AND LOWER(a.name) IN ('môn thể thao', 'sport', 'hoạt động')
+                    LIMIT 1
+                ) AS sport_tags
             FROM products p
             LEFT JOIN categories c ON p.category_id = c.id
-            LEFT JOIN brands b ON p.brand_id = b.id;
-        """
-        result = conn.execute(text(query)).mappings().all()
+            LEFT JOIN brands     b ON p.brand_id     = b.id
+            WHERE p.is_active = TRUE
+        """)
 
-        if not result:
-            print("❌ Bảng products của bạn đang trống! Hãy seed dữ liệu trước nhé.")
-            return
+        rows = conn.execute(query).mappings().all()
+        total = len(rows)
+        print(f"📦 Tổng cộng {total} sản phẩm cần vectorize.")
 
-        for row in result:
-            product_id = row['id']
-            cat_id = row['category_id']
-            brand_id = row['brand_id']
-            
-            # 4. Gom thông tin thành 1 đoạn văn chuẩn mực (Prompt Engineering)
-            content = f"Danh mục: {row['category_name']}. "
-            if row['brand_name']:
-                content += f"Thương hiệu: {row['brand_name']}. "
-            content += f"Sản phẩm: {row['name']}. "
-            content += f"Giá: {int(row['base_price'])} VNĐ. "
-            if row['description']:
-                content += f"Mô tả: {row['description']}"
-            
-            print(f"Đang xử lý SP ID {product_id}...")
+        # Xử lý theo batch để tránh rate limit
+        for batch_start in range(0, total, _BATCH_SIZE):
+            batch = rows[batch_start: batch_start + _BATCH_SIZE]
+            contents = [_build_content(dict(row)) for row in batch]
 
-            # 5. Gọi API Gemini để biến đoạn văn thành Vector mảng số (768 chiều)
-            vector = embeddings_model.embed_query(content)
+            # Embed từng batch một để tránh lỗi của Langchain Gemini trả về 1 vector
+            vectors = []
+            for c in contents:
+                vectors.append(embeddings_model.embed_query(c))
+                time.sleep(0.1) # Tránh rate limit
 
-            # 6. LƯU Ý SỬA INSERT: Thêm category_id và brand_id vào
-            insert_query = text("""
-                INSERT INTO product_embeddings (product_id, category_id, brand_id, content, embedding) 
-                VALUES (:pid, :cat_id, :brand_id, :content, :embedding)
-            """)
-            
-            conn.execute(insert_query, {
-                "pid": product_id, 
-                "cat_id": cat_id,
-                "brand_id": brand_id,
-                "content": content, 
-                "embedding": str(vector) # Ép kiểu về string cho pgvector
-            })
+            for row, content, vector in zip(batch, contents, vectors):
+                conn.execute(
+                    text("""
+                        INSERT INTO product_embeddings
+                            (product_id, category_id, brand_id, content, embedding)
+                        VALUES
+                            (:pid, :cat_id, :brand_id, :content, :embedding)
+                    """),
+                    {
+                        "pid":      row["id"],
+                        "cat_id":   row["category_id"],
+                        "brand_id": row["brand_id"],
+                        "content":  content,
+                        "embedding": str(vector),
+                    },
+                )
+
             conn.commit()
-            
-        print("🎉 Quá trình nhúng toàn bộ sản phẩm đã hoàn tất thành công!")
+            print(f"  ✅ Đã xử lý {min(batch_start + _BATCH_SIZE, total)}/{total}")
+
+            # Nghỉ nhỏ giữa các batch để tránh rate limit Gemini
+            if batch_start + _BATCH_SIZE < total:
+                time.sleep(1)
+
+        print("🎉 Vectorization hoàn tất!")
+
 
 if __name__ == "__main__":
     seed_database()
