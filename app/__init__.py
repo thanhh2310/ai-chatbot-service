@@ -10,4 +10,8 @@ def create_app():
     # Đăng ký URL prefix (Giống @RequestMapping("/api/ai"))
     app.register_blueprint(ai_bp, url_prefix='/api/ai')
 
+    # Khởi chạy quy trình Auto-Sync nhúng vector ngầm
+    from app.services.sync_service import start_polling
+    start_polling()
+
     return app
