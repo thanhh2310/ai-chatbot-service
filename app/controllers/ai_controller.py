@@ -3,6 +3,7 @@ from flask import Blueprint, jsonify, request
 from app.services.rag_service import search_similar_products
 from app.services.chatbot_service import chat_with_bot
 from app.services.recommendation_service import get_recommendations_for_user
+from app.services.agent_service import handle_user_request
 
 logger = logging.getLogger(__name__)
 
@@ -187,3 +188,47 @@ def recommend():
     except Exception as e:
         logger.error(f"[RECOMMEND] Lỗi nội bộ user={user_id}: {e}", exc_info=True)
         return _err("Đã xảy ra lỗi khi tạo gợi ý. Vui lòng thử lại.", 500)
+
+
+# ── UNIFIED ASK (Function Calling) ──────────────────────────────────────────
+
+@ai_bp.route("/ask", methods=["POST"])
+def unified_ask():
+    """
+    Endpoint AI duy nhất — tự động chọn tool (search / chat / recommend)
+    thông qua LLM function calling.
+
+    Body:
+        message     (str, bắt buộc)  — tin nhắn người dùng
+        user_id     (int, tuỳ chọn)  — ID người dùng
+        session_id  (str, tuỳ chọn)  — ID phiên chat
+
+    Response: Tuỳ tool được chọn:
+        tool: "search_products"       → {product_ids, query}
+        tool: "chat_with_bot"         → {session_id, reply, suggested_product_ids}
+        tool: "get_recommendations"   → {user_id, product_ids}
+    """
+    data, err = _get_json()
+    if err:
+        return err
+
+    message = (data.get("message") or "").strip()
+    if not message:
+        return _err("Trường 'message' không được để trống.")
+
+    session_id = data.get("session_id") or None
+    user_id = data.get("user_id")
+    if user_id is not None:
+        try:
+            user_id = int(user_id)
+        except (ValueError, TypeError):
+            return _err("Trường 'user_id' phải là số nguyên.")
+
+    try:
+        result = handle_user_request(message=message, user_id=user_id, session_id=session_id)
+        logger.info(f"[ASK] tool='{result.get('tool')}' user={user_id}")
+        return _ok(result)
+
+    except Exception as e:
+        logger.error(f"[ASK] Lỗi nội bộ: {e}", exc_info=True)
+        return _err("Đã xảy ra lỗi khi xử lý yêu cầu. Vui lòng thử lại.", 500)
