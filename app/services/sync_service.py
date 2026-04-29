@@ -3,16 +3,12 @@ import time
 import logging
 from app.services.db_service import db
 from sqlalchemy import text
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from app.utils.config import Config
-from concurrent.futures import ThreadPoolExecutor
+from app.services.embedding_service import embed_query, embed_batch
 
 logger = logging.getLogger(__name__)
 
-embeddings_model = GoogleGenerativeAIEmbeddings(
-    model="gemini-embedding-2-preview",
-    google_api_key=Config.GEMINI_API_KEY,
-)
+# Together AI cho phép batch lớn hơn Gemini — dùng batch 20 cho hiệu quả
+_BATCH_SIZE = 20
 
 def _build_content(row: dict) -> str:
     """Tạo chuỗi text đại diện cho sản phẩm."""
@@ -32,10 +28,6 @@ def _build_content(row: dict) -> str:
     if row["gender_tags"]: parts.append(f"Phù hợp cho: {row['gender_tags']}.")
     if row["sport_tags"]: parts.append(f"Phù hợp cho môn: {row['sport_tags']}.")
     return " ".join(parts)
-
-
-def _embed_single(content: str):
-    return embeddings_model.embed_query(content)
 
 
 def sync_new_products():
@@ -78,10 +70,13 @@ def sync_new_products():
         
         contents = [_build_content(dict(row)) for row in rows]
         
-        # Cải thiện tốc độ: Dùng ThreadPoolExecutor để embed song song (với max_workers=5 chống rate limit)
+        # Together AI hỗ trợ batch embed — nhanh hơn và ít tốn API call hơn
+        # Xử lý theo batch nhỏ để tránh payload quá lớn
         vectors = []
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            vectors = list(executor.map(_embed_single, contents))
+        for i in range(0, len(contents), _BATCH_SIZE):
+            batch = contents[i:i + _BATCH_SIZE]
+            batch_vectors = embed_batch(batch)
+            vectors.extend(batch_vectors)
         
         for row, content, vector in zip(rows, contents, vectors):
             session.execute(text("""

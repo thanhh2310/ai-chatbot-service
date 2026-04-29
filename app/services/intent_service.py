@@ -2,15 +2,14 @@ import json
 import logging
 import re
 from typing import Optional, List
-from google import genai
-from google.genai import types
+from together import Together
 from pydantic import BaseModel, Field
 from app.utils.config import Config
 
 logger = logging.getLogger(__name__)
 
-_client = genai.Client(api_key=Config.GEMINI_API_KEY)
-_MODEL  = "gemini-2.0-flash"
+_client = Together(api_key=Config.TOGETHER_API_KEY)
+_MODEL = "meta-llama/Llama-3.3-70B-Instruct-Turbo"
 
 # =====================================================================
 # SCHEMA MỞ RỘNG — Thêm color_preference và price_tier
@@ -185,18 +184,25 @@ def _regex_fallback_extract(query_text: str) -> dict:
 
 def analyze_query(query_text: str) -> dict:
     try:
-        response = _client.models.generate_content(
+        response = _client.chat.completions.create(
             model=_MODEL,
-            contents=_PROMPT_TEMPLATE.format(query=query_text),
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=QueryIntent,
-                temperature=0.0,
-            ),
+            messages=[
+                {"role": "system", "content": "You are an AI that extracts shopping intents. ALWAYS return ONLY valid JSON. No explanations, no markdown code blocks."},
+                {"role": "user", "content": _PROMPT_TEMPLATE.format(query=query_text)},
+            ],
+            temperature=0.0,
         )
-        intent = json.loads(response.text)
+        raw = response.choices[0].message.content.strip()
+        if not raw:
+            logger.warning("⚠️ Empty response from LLM, falling back to regex")
+            return _regex_fallback_extract(query_text)
+        # Strip markdown code fences if present
+        if raw.startswith("```"):
+            raw = re.sub(r"^```(?:json)?\s*", "", raw)
+            raw = re.sub(r"\s*```$", "", raw)
+        intent = json.loads(raw)
         logger.info(f"🧠 Intent: {intent}")
         return intent
     except Exception as e:
-        logger.error(f"❌ Gemini API lỗi: {e}")
+        logger.error(f"❌ Together API error: {e}")
         return _regex_fallback_extract(query_text)

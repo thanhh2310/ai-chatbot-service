@@ -1,17 +1,11 @@
 import logging
 import re  # BẮT BUỘC THÊM IMPORT NÀY
 from sqlalchemy import text
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from app.utils.config import Config
 from app.services.db_service import db
 from app.services.intent_service import analyze_query
+from app.services.embedding_service import embed_query
 
 logger = logging.getLogger(__name__)
-
-embeddings_model = GoogleGenerativeAIEmbeddings(
-    model="gemini-embedding-2-preview",
-    google_api_key=Config.GEMINI_API_KEY,
-)
 
 # Dung sai ngân sách: +15% để không bỏ sót sản phẩm cận giá
 _BUDGET_TOLERANCE = 1.15
@@ -25,7 +19,7 @@ def _build_enhanced_query(intent: dict) -> str:
     Xây dựng chuỗi query phong phú hơn để embedding vector chính xác hơn.
     Thêm context về màu sắc tích cực, giới tính, môn thể thao.
     """
-    parts = [intent.get("search_keywords", "")]
+    parts = [intent.get("search_keywords") or ""]
 
     if (gender := intent.get("gender")) and gender != "unisex":
         parts.append(f"dành cho {gender}")
@@ -82,7 +76,7 @@ def _rerank(candidates: list[dict], intent: dict, top_k: int) -> list[int]:
     excluded = [w.lower() for w in intent.get("excluded_keywords", [])]
     color_pref = (intent.get("color_preference") or "").lower()
     boost_keywords = [
-        kw.lower() for kw in intent.get("search_keywords", "").split()
+        kw.lower() for kw in (intent.get("search_keywords") or "").split()
         if len(kw) > 2
     ]
 
@@ -137,7 +131,7 @@ def search_similar_products(
 
         # ── Giai đoạn 1: Vector search — lấy nhiều ứng viên (top_k * 4) ─
         enhanced_query = _build_enhanced_query(intent)
-        query_vector   = embeddings_model.embed_query(enhanced_query)
+        query_vector   = embed_query(enhanced_query)
 
         where_clauses, params = _build_where_clauses(intent, target_category_id)
         where_sql = "WHERE " + " AND ".join(where_clauses)
@@ -175,3 +169,5 @@ def search_similar_products(
         return []
     finally:
         session.close()
+
+

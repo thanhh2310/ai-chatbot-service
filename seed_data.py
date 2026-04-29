@@ -1,14 +1,15 @@
 import os
 import time
 from sqlalchemy import create_engine, text
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from together import Together
 from dotenv import load_dotenv
 
 load_dotenv()
-DB_URL    = os.getenv("DATABASE_URL")
-GEMINI_KEY = os.getenv("GEMINI_API_KEY")
+DB_URL       = os.getenv("DATABASE_URL")
+TOGETHER_KEY = os.getenv("TOGETHER_API_KEY")
 
-# Số sản phẩm gửi embed 1 lần — tránh rate limit
+_MODEL = "intfloat/multilingual-e5-large-instruct"
+# Số sản phẩm gửi embed 1 lần — Together AI cho phép batch lớn
 _BATCH_SIZE = 20
 
 
@@ -57,13 +58,9 @@ def _build_content(row: dict) -> str:
 
 
 def seed_database():
-    print("🚀 Bắt đầu Vectorization...")
+    print("🚀 Bắt đầu Vectorization với Together AI (multilingual-e5-large-instruct)...")
 
-    embeddings_model = GoogleGenerativeAIEmbeddings(
-        model="gemini-embedding-2-preview",
-        google_api_key=GEMINI_KEY,
-    )
-
+    client = Together(api_key=TOGETHER_KEY)
     engine = create_engine(DB_URL)
 
     with engine.connect() as conn:
@@ -116,16 +113,15 @@ def seed_database():
         total = len(rows)
         print(f"📦 Tổng cộng {total} sản phẩm cần vectorize.")
 
-        # Xử lý theo batch để tránh rate limit
+        # Xử lý theo batch — Together AI hỗ trợ batch embed natively
         for batch_start in range(0, total, _BATCH_SIZE):
             batch = rows[batch_start: batch_start + _BATCH_SIZE]
             contents = [_build_content(dict(row)) for row in batch]
 
-            # Embed từng batch một để tránh lỗi của Langchain Gemini trả về 1 vector
-            vectors = []
-            for c in contents:
-                vectors.append(embeddings_model.embed_query(c))
-                time.sleep(0.1) # Tránh rate limit
+            # Gọi batch embed 1 lần cho cả batch — nhanh hơn gọi từng cái
+            response = client.embeddings.create(model=_MODEL, input=contents)
+            sorted_data = sorted(response.data, key=lambda x: x.index)
+            vectors = [item.embedding for item in sorted_data]
 
             for row, content, vector in zip(batch, contents, vectors):
                 conn.execute(
@@ -147,9 +143,9 @@ def seed_database():
             conn.commit()
             print(f"  ✅ Đã xử lý {min(batch_start + _BATCH_SIZE, total)}/{total}")
 
-            # Nghỉ nhỏ giữa các batch để tránh rate limit Gemini
+            # Nghỉ nhỏ giữa các batch
             if batch_start + _BATCH_SIZE < total:
-                time.sleep(1)
+                time.sleep(0.5)
 
         print("🎉 Vectorization hoàn tất!")
 
