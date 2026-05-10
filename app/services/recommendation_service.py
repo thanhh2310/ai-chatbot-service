@@ -4,71 +4,47 @@ from app.services.db_service import db
 import numpy as np
 
 engine = db.get_engine()
-
 logger = logging.getLogger(__name__)
 
-# Số seed product lấy từ mỗi nguồn (orders, wishlist)
 _SEEDS_PER_SOURCE = 3
-# Ứng viên lấy mỗi seed trước khi dedup — luôn lấy nhiều hơn limit
-_CANDIDATES_PER_SEED = 10
 
 
 def get_recommendations_for_user(user_id: int, limit: int = 6) -> list[int]:
     """
-    Gợi ý sản phẩm cá nhân hóa dựa trên lịch sử mua và wishlist.
+    Gợi ý sản phẩm cá nhân hóa dựa trên lịch sử mua, wishlist, và user_interactions.
 
     Chiến lược:
-      - Lấy tối đa 3 SP mua gần nhất + 3 SP wishlist gần nhất làm "seed"
-      - Với mỗi seed: tìm top-N SP tương tự (loại trừ đã mua/đã thích/chính nó)
-      - Gom kết quả, dedup, sắp xếp theo tần suất xuất hiện (popularity fusion)
-      - Fallback: sản phẩm mới nhất nếu user chưa có dữ liệu
+      - Seed từ 4 nguồn: orders, wishlists, user_interactions (view/search/cart)
+      - Tính vector trọng tâm (centroid) từ embeddings của seed products
+      - Tìm sản phẩm tương tự bằng vector similarity
+      - Popularity fusion: ưu tiên sản phẩm xuất hiện nhiều lần trong lịch sử
+      - Fallback: sản phẩm phổ biến nhất nếu user chưa có dữ liệu
     """
     try:
         with engine.connect() as conn:
-            # ── 1. Lấy danh sách SP đã mua và đã wishlist để loại trừ ──────
-            bought_ids = _get_bought_product_ids(conn, user_id)
-            wished_ids = _get_wished_product_ids(conn, user_id)
-            exclude_ids = bought_ids | wished_ids  # union
+            # ── 1. Sản phẩm loại trừ (đã mua, đã wishlist) ───────────────────
+            exclude_ids = _get_excluded_ids(conn, user_id)
 
-            # ── 2. Lấy seed products ──────────────────────────────────────
-            # Lấy nhiều seed hơn để vector trung bình đa dạng hơn
-            seed_ids_from_orders   = _get_recent_product_ids(conn, "orders",    user_id, _SEEDS_PER_SOURCE)
-            seed_ids_from_wishlist = _get_recent_product_ids(conn, "wishlists", user_id, _SEEDS_PER_SOURCE)
-            seed_ids = list(dict.fromkeys(seed_ids_from_orders + seed_ids_from_wishlist))  # dedup, giữ thứ tự
+            # ── 2. Seed products từ 4 nguồn ────────────────────────────────────
+            seed_ids = _get_seeds(conn, user_id)
 
-            # ── 3. Fallback: user mới chưa có dữ liệu ────────────────────
+            # ── 3. Fallback: user mới → sản phẩm phổ biến ──────────────────────
             if not seed_ids:
-                return _get_popular_products(conn, limit)
+                return _get_popular_products(conn, limit, exclude_ids)
 
-            # ── 4. Lấy embedding của các seed ────────────────────────────
-            seed_vectors_dict = _get_embeddings(conn, seed_ids)
-            if not seed_vectors_dict:
-                return _get_popular_products(conn, limit)
+            # ── 4. Embeddings của seed products ────────────────────────────────
+            seed_vectors = _get_embeddings(conn, seed_ids)
+            if not seed_vectors:
+                return _get_popular_products(conn, limit, exclude_ids)
 
-            # ── 5. Tính Vector Trọng Tâm (Centroid User Profile) ─────────
-            # Chuyển các string vector "[0.1, 0.2...]" thành mảng numpy floats
-            vector_arrays = []
-            for vec_str in seed_vectors_dict.values():
-                # Xử lý string dạng "[0.123, -0.456, ...]" thành list float
-                clean_str = vec_str.strip("[]")
-                vec_float = [float(x) for x in clean_str.split(",")]
-                vector_arrays.append(vec_float)
-            
-            # Tính trung bình cộng của tất cả các vector
-            centroid_vector = np.mean(vector_arrays, axis=0)
-            centroid_vector_str = f"[{','.join(map(str, centroid_vector))}]"
+            # ── 5. Tính centroid (vector trung bình có trọng số) ─────────────────
+            centroid = _compute_weighted_centroid(conn, user_id, seed_ids, seed_vectors)
 
-            # ── 6. Tìm SP tương tự với Vector Sở Thích (Chỉ 1 câu Query) ─
-            candidates = _find_similar(
-                conn=conn,
-                seed_vector=centroid_vector_str,
-                exclude_ids=exclude_ids, # Loại trừ đồ đã mua/thích
-                top_k=limit,
-            )
-            
-            result = [pid for pid, _ in candidates]
-            logger.info(f"✅ Recommendations user={user_id}: {result}")
-            return result
+            # ── 6. Tìm sản phẩm tương tự + popularity fusion ─────────────────
+            candidates = _find_similar_with_popularity(conn, centroid, exclude_ids, limit)
+
+            logger.info(f"✅ Recommendations user={user_id}: {[pid for pid, _ in candidates]}")
+            return [pid for pid, _ in candidates]
 
     except Exception as e:
         logger.error(f"❌ Recommendation lỗi user={user_id}: {e}", exc_info=True)
@@ -77,55 +53,135 @@ def get_recommendations_for_user(user_id: int, limit: int = 6) -> list[int]:
 
 # ── PRIVATE HELPERS ──────────────────────────────────────────────────────────
 
-def _get_bought_product_ids(conn, user_id: int) -> set[int]:
-    """Toàn bộ SP user đã mua — dùng để loại trừ khỏi gợi ý."""
+def _get_excluded_ids(conn, user_id: int) -> set[int]:
+    """Lấy tất cả SP đã mua + đã wishlist để loại trừ khỏi gợi ý."""
     rows = conn.execute(text("""
-        SELECT DISTINCT ps.product_id
-        FROM orders o
-        JOIN order_items  oi ON o.id  = oi.order_id
-        JOIN product_skus ps ON oi.product_sku_id = ps.id
-        WHERE o.user_id = :uid
-    """), {"uid": user_id}).mappings().all()
-    return {r["product_id"] for r in rows}
-
-
-def _get_wished_product_ids(conn, user_id: int) -> set[int]:
-    """Toàn bộ SP trong wishlist — dùng để loại trừ khỏi gợi ý."""
-    rows = conn.execute(text("""
-        SELECT DISTINCT product_id FROM wishlists WHERE user_id = :uid
-    """), {"uid": user_id}).mappings().all()
-    return {r["product_id"] for r in rows}
-
-
-def _get_recent_product_ids(conn, source: str, user_id: int, limit: int) -> list[int]:
-    """
-    Lấy product_id gần nhất từ orders hoặc wishlists.
-    Trả về nhiều seed hơn 1 để tăng độ đa dạng gợi ý.
-    """
-    if source == "orders":
-        sql = text("""
+        SELECT DISTINCT product_id FROM (
             SELECT ps.product_id
             FROM orders o
-            JOIN order_items  oi ON o.id  = oi.order_id
+            JOIN order_items oi ON o.id = oi.order_id
             JOIN product_skus ps ON oi.product_sku_id = ps.id
             WHERE o.user_id = :uid
-            GROUP BY ps.product_id
-            ORDER BY MAX(o.created_at) DESC
-            LIMIT :limit
-        """)
-    else:  # wishlists
-        sql = text("""
-            SELECT product_id FROM wishlists
+
+            UNION
+
+            SELECT product_id FROM wishlists WHERE user_id = :uid
+        ) AS excluded
+    """), {"uid": user_id}).scalars().all()
+    return set(rows)
+
+
+def _get_seeds(conn, user_id: int) -> list[int]:
+    """
+    Lấy seed products từ 4 nguồn với trọng số:
+      - PURCHASE: weight 5.0
+      - ADD_TO_CART: weight 3.0
+      - VIEW: weight 1.0
+      - SEARCH: weight 0.5
+    """
+    rows = conn.execute(text("""
+        WITH seeds AS (
+            -- 1. Từ orders (mua hàng - trọng số cao nhất)
+            SELECT DISTINCT ps.product_id, 5.0 AS weight
+            FROM orders o
+            JOIN order_items oi ON o.id = oi.order_id
+            JOIN product_skus ps ON oi.product_sku_id = ps.id
+            WHERE o.user_id = :uid AND o.order_status != 'CANCELLED'
+
+            UNION ALL
+
+            -- 2. Từ wishlists
+            SELECT product_id, 4.0 AS weight
+            FROM wishlists
             WHERE user_id = :uid
-            ORDER BY created_at DESC
-            LIMIT :limit
-        """)
-    rows = conn.execute(sql, {"uid": user_id, "limit": limit}).mappings().all()
+
+            UNION ALL
+
+            -- 3. Từ user_interactions (cart)
+            SELECT ui.product_id, 3.0 AS weight
+            FROM user_interactions ui
+            WHERE ui.user_id = :uid AND ui.interaction_type = 'ADD_TO_CART'
+
+            UNION ALL
+
+            -- 4. Từ user_interactions (view)
+            SELECT ui.product_id, 1.0 AS weight
+            FROM user_interactions ui
+            WHERE ui.user_id = :uid AND ui.interaction_type = 'VIEW'
+
+            UNION ALL
+
+            -- 5. Từ user_interactions (search - trọng số thấp nhất)
+            SELECT ui.product_id, 0.5 AS weight
+            FROM user_interactions ui
+            WHERE ui.user_id = :uid AND ui.interaction_type = 'SEARCH'
+        )
+        SELECT product_id, SUM(weight) AS total_weight
+        FROM seeds
+        GROUP BY product_id
+        ORDER BY total_weight DESC
+        LIMIT :limit
+    """), {"uid": user_id, "limit": _SEEDS_PER_SOURCE * 4}).mappings().all()
     return [r["product_id"] for r in rows]
 
 
+def _compute_weighted_centroid(conn, user_id: int, seed_ids: list[int], seed_vectors: dict) -> str:
+    """
+    Tính centroid có trọng số dựa trên interaction_weight và tần suất xuất hiện.
+    """
+    # Lấy trọng số của từng seed product
+    weights = {}
+    rows = conn.execute(text("""
+        WITH seeds AS (
+            SELECT DISTINCT ps.product_id, 5.0 AS weight
+            FROM orders o
+            JOIN order_items oi ON o.id = oi.order_id
+            JOIN product_skus ps ON oi.product_sku_id = ps.id
+            WHERE o.user_id = :uid AND o.order_status != 'CANCELLED'
+
+            UNION ALL
+            SELECT product_id, 4.0 FROM wishlists WHERE user_id = :uid
+            UNION ALL
+            SELECT product_id, ui.interaction_weight FROM user_interactions ui WHERE ui.user_id = :uid
+        )
+        SELECT product_id, SUM(weight) AS total_weight
+        FROM seeds
+        WHERE product_id = ANY(:pids)
+        GROUP BY product_id
+    """), {"uid": user_id, "pids": seed_ids}).mappings().all()
+
+    for r in rows:
+        weights[r["product_id"]] = float(r["total_weight"])
+
+    # Normalize weights
+    total_weight = sum(weights.values()) if weights else 1.0
+
+    vector_arrays = []
+    for pid in seed_ids:
+        if pid not in seed_vectors:
+            continue
+        w = weights.get(pid, 1.0) / total_weight
+        clean_str = seed_vectors[pid].strip("[]")
+        vec_float = [float(x) * w for x in clean_str.split(",")]
+        vector_arrays.append(vec_float)
+
+    if not vector_arrays:
+        # Fallback: simple average
+        for pid in seed_ids:
+            if pid in seed_vectors:
+                clean_str = seed_vectors[pid].strip("[]")
+                vec_float = [float(x) for x in clean_str.split(",")]
+                vector_arrays.append(vec_float)
+                break
+
+    if not vector_arrays:
+        return ""
+
+    centroid = np.mean(vector_arrays, axis=0)
+    return f"[{','.join(map(str, centroid))}]"
+
+
 def _get_embeddings(conn, product_ids: list[int]) -> dict[int, str]:
-    """Lấy embedding của nhiều sản phẩm trong 1 query."""
     if not product_ids:
         return {}
     rows = conn.execute(text("""
@@ -136,46 +192,85 @@ def _get_embeddings(conn, product_ids: list[int]) -> dict[int, str]:
     return {r["product_id"]: r["embedding"] for r in rows}
 
 
-def _find_similar(conn, seed_vector: str, exclude_ids: set[int], top_k: int) -> list[tuple[int, float]]:
+def _find_similar_with_popularity(conn, centroid: str, exclude_ids: set[int], top_k: int) -> list[tuple[int, float]]:
     """
-    Tìm SP tương tự với 1 seed vector.
-    Loại trừ các SP trong exclude_ids ngay trong SQL — tránh subquery động.
+    Tìm sản phẩm tương tự + tính popularity score từ:
+      - Số lần mua (orders)
+      - Số lần thêm vào cart (user_interactions)
+      - Số lần view (user_interactions)
     """
     if not exclude_ids:
-        exclude_ids = {-1}  # tránh IN () rỗng gây lỗi SQL
+        exclude_ids = {-1}
+
+    if not centroid:
+        return _get_popular_raw(conn, exclude_ids, top_k)
 
     rows = conn.execute(text("""
-        SELECT DISTINCT pe.product_id, MIN(pe.embedding <=> CAST(:vector AS vector)) AS distance
+        WITH popularity AS (
+            SELECT ps.product_id,
+                   COALESCE(SUM(oi.quantity), 0)::float +
+                   COALESCE(
+                       (SELECT COUNT(*)::float FROM user_interactions ui
+                        WHERE ui.product_id = ps.product_id
+                        AND ui.interaction_type = 'ADD_TO_CART'), 0) AS pop_score
+            FROM product_skus ps
+            LEFT JOIN order_items oi ON oi.product_sku_id = ps.id
+            LEFT JOIN orders o ON o.id = oi.order_id AND o.order_status != 'CANCELLED'
+            GROUP BY ps.product_id
+        )
+        SELECT DISTINCT
+            pe.product_id,
+            MIN(pe.embedding <=> CAST(:vector AS vector)) AS distance,
+            COALESCE(p2.pop_score, 0) AS popularity
         FROM product_embeddings pe
         JOIN products p ON p.id = pe.product_id
+        LEFT JOIN popularity p2 ON p2.product_id = pe.product_id
         WHERE p.is_active = TRUE
           AND pe.product_id != ALL(:exclude_ids)
-        GROUP BY pe.product_id
-        ORDER BY distance ASC
+        GROUP BY pe.product_id, p2.pop_score
+        ORDER BY distance ASC, popularity DESC
         LIMIT :top_k
     """), {
-        "vector":      seed_vector,
+        "vector": centroid,
         "exclude_ids": list(exclude_ids),
-        "top_k":       top_k,
+        "top_k": top_k,
     }).mappings().all()
 
     return [(r["product_id"], float(r["distance"])) for r in rows]
 
 
-def _get_popular_products(conn, limit: int) -> list[int]:
-    """Fallback cho user mới: trả về SP được mua nhiều nhất đang active."""
+def _get_popular_raw(conn, exclude_ids: set[int], limit: int) -> list[tuple[int, float]]:
+    """Fallback: sản phẩm phổ biến nhất (không có centroid)."""
     rows = conn.execute(text("""
         SELECT ps.product_id, SUM(oi.quantity) AS total_sold
-        FROM orders o
-        JOIN order_items  oi ON o.id  = oi.order_id
-        JOIN product_skus ps ON oi.product_sku_id = ps.id
+        FROM product_skus ps
+        LEFT JOIN order_items oi ON oi.product_sku_id = ps.id
+        LEFT JOIN orders o ON o.id = oi.order_id AND o.order_status != 'CANCELLED'
         JOIN products p ON p.id = ps.product_id
-        WHERE o.order_status NOT IN ('CANCELLED')
-          AND p.is_active = TRUE
+        WHERE p.is_active = TRUE
+          AND ps.product_id != ALL(:exclude_ids)
         GROUP BY ps.product_id
         ORDER BY total_sold DESC
         LIMIT :limit
-    """), {"limit": limit}).mappings().all()
+    """), {"exclude_ids": list(exclude_ids), "limit": limit}).mappings().all()
+    return [(r["product_id"], float(r["total_sold"])) for r in rows]
+
+
+def _get_popular_products(conn, limit: int, exclude_ids: set[int]) -> list[int]:
+    """Fallback: sản phẩm phổ biến cho user mới (loại trừ đã mua/wishlist)."""
+    if not exclude_ids:
+        exclude_ids = {-1}
+
+    rows = conn.execute(text("""
+        SELECT ps.product_id, SUM(oi.quantity) AS total_sold
+        FROM product_skus ps
+        LEFT JOIN order_items oi ON oi.product_sku_id = ps.id
+        LEFT JOIN orders o ON o.id = oi.order_id AND o.order_status != 'CANCELLED'
+        JOIN products p ON p.id = ps.product_id
+        WHERE p.is_active = TRUE
+          AND ps.product_id != ALL(:exclude_ids)
+        GROUP BY ps.product_id
+        ORDER BY total_sold DESC
+        LIMIT :limit
+    """), {"exclude_ids": list(exclude_ids), "limit": limit}).mappings().all()
     return [r["product_id"] for r in rows]
-
-

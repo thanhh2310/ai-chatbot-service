@@ -45,14 +45,18 @@ def sync_new_products():
                     WHERE sk.product_id = p.id
                 ) AS available_attributes,
                 (
-                    SELECT ps.value FROM product_specs ps
-                    JOIN attributes a ON a.id = ps.attribute_id
+                    SELECT av.value 
+                    FROM product_specs ps
+                    JOIN attribute_values av ON av.id = ps.attribute_value_id
+                    JOIN attributes a ON a.id = av.attribute_id
                     WHERE ps.product_id = p.id AND LOWER(a.name) IN ('giới tính', 'gender')
                     LIMIT 1
                 ) AS gender_tags,
                 (
-                    SELECT ps.value FROM product_specs ps
-                    JOIN attributes a ON a.id = ps.attribute_id
+                    SELECT av.value 
+                    FROM product_specs ps
+                    JOIN attribute_values av ON av.id = ps.attribute_value_id
+                    JOIN attributes a ON a.id = av.attribute_id
                     WHERE ps.product_id = p.id AND LOWER(a.name) IN ('môn thể thao', 'sport', 'hoạt động')
                     LIMIT 1
                 ) AS sport_tags

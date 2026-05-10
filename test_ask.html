@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Chatbot – Test /api/ai/ask</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --surface2: #21262d;
+      --border: #30363d;
+      --accent: #7c3aed;
+      --accent2: #a855f7;
+      --accent-glow: rgba(124, 58, 237, 0.25);
+      --text: #e6edf3;
+      --text-muted: #8b949e;
+      --user-bg: #1e1b4b;
+      --user-border: #4c1d95;
+      --bot-bg: #0f2027;
+      --bot-border: #1a3a4a;
+      --success: #22c55e;
+      --warning: #f59e0b;
+      --error: #ef4444;
+      --chip-bg: #1c2331;
+      --chip-border: #2d3a4a;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      overflow: hidden;
+    }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      width: 280px;
+      min-width: 280px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      padding: 20px 16px;
+      gap: 20px;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 4px 0 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .logo-icon {
+      width: 36px; height: 36px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+      box-shadow: 0 0 16px var(--accent-glow);
+    }
+    .logo-text { font-size: 15px; font-weight: 700; letter-spacing: -0.3px; }
+    .logo-sub { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+
+    .config-section { display: flex; flex-direction: column; gap: 12px; }
+    .config-label {
+      font-size: 11px; font-weight: 600; color: var(--text-muted);
+      text-transform: uppercase; letter-spacing: 0.6px;
+    }
+    .input-group { display: flex; flex-direction: column; gap: 6px; }
+    .input-group label { font-size: 12px; color: var(--text-muted); }
+    .input-group input {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 10px;
+      color: var(--text);
+      font-size: 13px;
+      font-family: 'Inter', monospace;
+      transition: border-color 0.2s;
+      outline: none;
+    }
+    .input-group input:focus { border-color: var(--accent); }
+
+    .session-display {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 11px;
+      color: var(--text-muted);
+      font-family: monospace;
+      word-break: break-all;
+      min-height: 36px;
+    }
+    .session-display.active { color: var(--accent2); border-color: var(--accent); }
+
+    .btn-clear {
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 12px;
+      color: var(--text-muted);
+      font-size: 12px;
+      font-family: 'Inter', sans-serif;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .btn-clear:hover { border-color: var(--error); color: var(--error); }
+
+    .tool-badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      background: var(--chip-bg); border: 1px solid var(--chip-border);
+      border-radius: 20px; padding: 4px 10px; font-size: 11px;
+      color: var(--text-muted);
+    }
+    .tool-badge.search { border-color: #1d4ed8; color: #93c5fd; }
+    .tool-badge.chat { border-color: #166534; color: #86efac; }
+    .tool-badge.recommend { border-color: #92400e; color: #fcd34d; }
+
+    .stats {
+      margin-top: auto;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    .stat-row {
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: 12px; color: var(--text-muted);
+    }
+    .stat-val { font-weight: 600; color: var(--text); font-size: 13px; }
+
+    /* ── Main chat ── */
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .topbar {
+      height: 56px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center;
+      padding: 0 20px;
+      gap: 12px;
+    }
+    .topbar h1 { font-size: 15px; font-weight: 600; flex: 1; }
+    .status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%; background: var(--success);
+      box-shadow: 0 0 8px var(--success);
+      animation: pulse 2s infinite;
+    }
+    .status-dot.offline { background: var(--error); box-shadow: 0 0 8px var(--error); animation: none; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+    .status-label { font-size: 12px; color: var(--text-muted); }
+
+    /* ── Messages ── */
+    #chat-container {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      scroll-behavior: smooth;
+    }
+    #chat-container::-webkit-scrollbar { width: 4px; }
+    #chat-container::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .msg {
+      display: flex;
+      gap: 12px;
+      animation: fadeIn 0.25s ease;
+    }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+    .msg.user { flex-direction: row-reverse; }
+
+    .avatar {
+      width: 34px; height: 34px; border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 15px; flex-shrink: 0;
+    }
+    .msg.user .avatar { background: var(--user-bg); border: 1px solid var(--user-border); }
+    .msg.bot .avatar {
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      box-shadow: 0 0 12px var(--accent-glow);
+    }
+
+    .bubble-wrap { max-width: 72%; display: flex; flex-direction: column; gap: 6px; }
+    .msg.user .bubble-wrap { align-items: flex-end; }
+
+    .bubble {
+      padding: 12px 16px;
+      border-radius: 14px;
+      font-size: 14px;
+      line-height: 1.65;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .msg.user .bubble {
+      background: var(--user-bg);
+      border: 1px solid var(--user-border);
+      border-bottom-right-radius: 4px;
+      color: #c4b5fd;
+    }
+    .msg.bot .bubble {
+      background: var(--bot-bg);
+      border: 1px solid var(--bot-border);
+      border-bottom-left-radius: 4px;
+    }
+    .bubble .cursor {
+      display: inline-block;
+      width: 2px; height: 14px;
+      background: var(--accent2);
+      animation: blink 0.9s step-end infinite;
+      vertical-align: middle;
+      margin-left: 2px;
+    }
+    @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+
+    .meta-row {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 11px; color: var(--text-muted);
+    }
+    .msg.user .meta-row { justify-content: flex-end; }
+
+    /* Product cards */
+    .products-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 10px;
+      margin-top: 6px;
+    }
+    .product-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      display: flex; flex-direction: column; gap: 5px;
+      transition: border-color 0.2s, transform 0.2s;
+      cursor: default;
+    }
+    .product-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+    .pc-name { font-size: 13px; font-weight: 600; line-height: 1.3; }
+    .pc-brand { font-size: 11px; color: var(--text-muted); }
+    .pc-price {
+      font-size: 13px; font-weight: 700;
+      color: var(--accent2); margin-top: 4px;
+    }
+    .pc-desc { font-size: 11px; color: var(--text-muted); line-height: 1.4; }
+    .pc-cat {
+      display: inline-block;
+      background: var(--chip-bg); border: 1px solid var(--chip-border);
+      border-radius: 4px; padding: 2px 6px;
+      font-size: 10px; color: var(--text-muted);
+    }
+    .bubble a.product-link {
+      color: var(--accent2);
+      text-decoration: none;
+      border-bottom: 1px dashed var(--accent2);
+      transition: color 0.2s, border-color 0.2s;
+    }
+    .bubble a.product-link:hover {
+      color: #d8b4fe;
+      border-color: #d8b4fe;
+    }
+
+    /* ── Input area ── */
+    .input-area {
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      padding: 16px 20px;
+    }
+    .quick-prompts {
+      display: flex; gap: 8px; flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+    .quick-btn {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 20px; padding: 5px 12px;
+      font-size: 12px; color: var(--text-muted);
+      cursor: pointer; transition: all 0.2s;
+      font-family: 'Inter', sans-serif;
+    }
+    .quick-btn:hover { border-color: var(--accent); color: var(--accent2); }
+
+    .input-row {
+      display: flex; align-items: flex-end; gap: 10px;
+    }
+    #msg-input {
+      flex: 1;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 16px;
+      color: var(--text);
+      font-size: 14px;
+      font-family: 'Inter', sans-serif;
+      resize: none;
+      min-height: 44px; max-height: 140px;
+      outline: none;
+      transition: border-color 0.2s;
+      line-height: 1.5;
+    }
+    #msg-input:focus { border-color: var(--accent); }
+    #msg-input::placeholder { color: var(--text-muted); }
+
+    .send-btn {
+      width: 44px; height: 44px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border: none; border-radius: 12px;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+      box-shadow: 0 0 16px var(--accent-glow);
+      transition: transform 0.15s, box-shadow 0.15s;
+      flex-shrink: 0;
+    }
+    .send-btn:hover:not(:disabled) { transform: scale(1.06); box-shadow: 0 0 24px var(--accent-glow); }
+    .send-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+    /* ── Empty state ── */
+    .empty-state {
+      flex: 1;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 16px; text-align: center; opacity: 0.7;
+    }
+    .empty-icon { font-size: 48px; }
+    .empty-title { font-size: 18px; font-weight: 600; }
+    .empty-sub { font-size: 13px; color: var(--text-muted); max-width: 320px; line-height: 1.6; }
+  </style>
+</head>
+<body>
+
+<!-- ── Sidebar ── -->
+<aside class="sidebar">
+  <div class="logo">
+    <div class="logo-icon">🤖</div>
+    <div>
+      <div class="logo-text">AI Agent Tester</div>
+      <div class="logo-sub">POST /api/ai/ask · SSE Stream</div>
+    </div>
+  </div>
+
+  <div class="config-section">
+    <div class="config-label">Cấu hình</div>
+
+    <div class="input-group">
+      <label>API URL</label>
+      <input id="api-url" value="http://localhost:5001/api/ai/ask" />
+    </div>
+    <div class="input-group">
+      <label>User ID (tuỳ chọn)</label>
+      <input id="user-id" type="number" placeholder="VD: 1" />
+    </div>
+    <div class="input-group">
+      <label>Session ID (tự tạo khi chat)</label>
+      <div class="session-display" id="session-display">Chưa có phiên chat</div>
+    </div>
+
+    <button class="btn-clear" onclick="clearSession()">🗑 Xoá phiên & lịch sử</button>
+  </div>
+
+  <div class="config-section">
+    <div class="config-label">Tool đã dùng</div>
+    <div id="tool-history" style="display:flex;flex-direction:column;gap:6px;min-height:24px;">
+      <span style="font-size:12px;color:var(--text-muted);">Chưa có</span>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="config-label">Thống kê phiên</div>
+    <div class="stat-row"><span>Tin nhắn</span><span class="stat-val" id="stat-msgs">0</span></div>
+    <div class="stat-row"><span>Sản phẩm trả về</span><span class="stat-val" id="stat-products">0</span></div>
+    <div class="stat-row"><span>Trạng thái</span><span class="stat-val" id="stat-status" style="color:var(--success)">●  Online</span></div>
+  </div>
+</aside>
+
+<!-- ── Main ── -->
+<div class="main">
+  <div class="topbar">
+    <h1>Chat với AI Agent</h1>
+    <div class="status-dot" id="status-dot"></div>
+    <span class="status-label" id="status-label">Sẵn sàng</span>
+  </div>
+
+  <div id="chat-container">
+    <div class="empty-state" id="empty-state">
+      <div class="empty-icon">✨</div>
+      <div class="empty-title">Bắt đầu trò chuyện</div>
+      <div class="empty-sub">
+        AI Agent sẽ tự chọn tool phù hợp:<br/>
+        🔍 Tìm kiếm sản phẩm · 💬 Tư vấn · 🎁 Gợi ý cá nhân hoá
+      </div>
+    </div>
+  </div>
+
+  <div class="input-area">
+    <div class="quick-prompts">
+      <button class="quick-btn" onclick="quickSend('Tìm giày chạy bộ Nike cho nam dưới 3 triệu')">🔍 Giày chạy bộ Nike</button>
+      <button class="quick-btn" onclick="quickSend('Tư vấn cho tôi áo thể thao phù hợp cho gym')">💬 Áo gym</button>
+      <button class="quick-btn" onclick="quickSend('Gợi ý sản phẩm phù hợp với tôi')">🎁 Gợi ý cá nhân hoá</button>
+      <button class="quick-btn" onclick="quickSend('Xin chào, cửa hàng bán gì vậy?')">👋 Chào hỏi</button>
+    </div>
+    <div class="input-row">
+      <textarea id="msg-input" rows="1" placeholder="Nhập câu hỏi... (Enter gửi, Shift+Enter xuống dòng)"></textarea>
+      <button class="send-btn" id="send-btn" onclick="sendMessage()">➤</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  let sessionId = null;
+  let msgCount = 0;
+  let totalProducts = 0;
+  const toolHistory = new Set();
+
+  const chatEl   = document.getElementById('chat-container');
+  const input    = document.getElementById('msg-input');
+  const sendBtn  = document.getElementById('send-btn');
+  const dotEl    = document.getElementById('status-dot');
+  const labelEl  = document.getElementById('status-label');
+
+  // Auto-resize textarea
+  input.addEventListener('input', () => {
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 140) + 'px';
+  });
+
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  });
+
+  function setStatus(text, streaming = false) {
+    labelEl.textContent = text;
+    dotEl.classList.toggle('offline', false);
+    if (streaming) {
+      dotEl.style.background = 'var(--warning)';
+      dotEl.style.boxShadow  = '0 0 8px var(--warning)';
+    } else {
+      dotEl.style.background = '';
+      dotEl.style.boxShadow  = '';
+    }
+  }
+
+  function quickSend(text) {
+    input.value = text;
+    input.style.height = 'auto';
+    sendMessage();
+  }
+
+  function clearSession() {
+    sessionId = null;
+    msgCount = 0; totalProducts = 0;
+    toolHistory.clear();
+    document.getElementById('session-display').textContent = 'Chưa có phiên chat';
+    document.getElementById('session-display').classList.remove('active');
+    document.getElementById('stat-msgs').textContent = '0';
+    document.getElementById('stat-products').textContent = '0';
+    document.getElementById('tool-history').innerHTML = '<span style="font-size:12px;color:var(--text-muted);">Chưa có</span>';
+    chatEl.innerHTML = `
+      <div class="empty-state" id="empty-state">
+        <div class="empty-icon">✨</div>
+        <div class="empty-title">Bắt đầu trò chuyện</div>
+        <div class="empty-sub">
+          AI Agent sẽ tự chọn tool phù hợp:<br/>
+          🔍 Tìm kiếm sản phẩm · 💬 Tư vấn · 🎁 Gợi ý cá nhân hoá
+        </div>
+      </div>`;
+  }
+
+  function addUserMsg(text) {
+    const empty = document.getElementById('empty-state');
+    if (empty) empty.remove();
+
+    const d = document.createElement('div');
+    d.className = 'msg user';
+    d.innerHTML = `
+      <div class="avatar">👤</div>
+      <div class="bubble-wrap">
+        <div class="bubble">${escHtml(text)}</div>
+        <div class="meta-row">${fmtTime()}</div>
+      </div>`;
+    chatEl.appendChild(d);
+    scrollBottom();
+  }
+
+  function addBotMsg() {
+    const d = document.createElement('div');
+    d.className = 'msg bot';
+    d.innerHTML = `
+      <div class="avatar">🤖</div>
+      <div class="bubble-wrap">
+        <div class="meta-row" id="meta-pending">
+          <span style="color:var(--text-muted);font-size:11px">⏳ Đang xử lý...</span>
+        </div>
+        <div class="bubble" id="bot-bubble"><span class="cursor"></span></div>
+      </div>`;
+    chatEl.appendChild(d);
+    scrollBottom();
+    return d;
+  }
+
+  function updateToolBadge(toolName, msgEl) {
+    const metaEl = msgEl.querySelector('#meta-pending');
+    const icon = toolName === 'search_products' ? '🔍' :
+                 toolName === 'get_recommendations' ? '🎁' : '💬';
+    const cls  = toolName === 'search_products' ? 'search' :
+                 toolName === 'get_recommendations' ? 'recommend' : 'chat';
+    const label = toolName === 'search_products' ? 'search_products' :
+                  toolName === 'get_recommendations' ? 'get_recommendations' : 'chat_with_bot';
+    if (metaEl) metaEl.innerHTML = `<span class="tool-badge ${cls}">${icon} ${label}</span><span>${fmtTime()}</span>`;
+
+    // sidebar tool history
+    if (!toolHistory.has(toolName)) {
+      toolHistory.add(toolName);
+      const thEl = document.getElementById('tool-history');
+      if (thEl.querySelector('span[style]')) thEl.innerHTML = '';
+      const b = document.createElement('span');
+      b.className = `tool-badge ${cls}`;
+      b.textContent = `${icon} ${label}`;
+      thEl.appendChild(b);
+    }
+  }
+
+  function renderProducts(products, bubbleWrap) {
+    if (!products || !products.length) return;
+    const grid = document.createElement('div');
+    grid.className = 'products-grid';
+    grid.innerHTML = products.map(p => `
+      <div class="product-card">
+        ${p.category ? `<span class="pc-cat">${p.category}</span>` : ''}
+        <div class="pc-name">${escHtml(p.name)}</div>
+        ${p.brand ? `<div class="pc-brand">${escHtml(p.brand)}</div>` : ''}
+        <div class="pc-price">${fmtPrice(p.base_price)}</div>
+        ${p.description ? `<div class="pc-desc">${escHtml(p.description.slice(0, 90))}${p.description.length > 90 ? '...' : ''}</div>` : ''}
+      </div>
+    `).join('');
+    bubbleWrap.appendChild(grid);
+    totalProducts += products.length;
+    document.getElementById('stat-products').textContent = totalProducts;
+  }
+
+  async function sendMessage() {
+    const text = input.value.trim();
+    if (!text) return;
+
+    const apiUrl = document.getElementById('api-url').value.trim();
+    const userId = document.getElementById('user-id').value.trim();
+
+    addUserMsg(text);
+    input.value = '';
+    input.style.height = 'auto';
+    sendBtn.disabled = true;
+    setStatus('AI đang suy nghĩ...', true);
+
+    const botMsgEl  = addBotMsg();
+    const bubbleEl  = botMsgEl.querySelector('#bot-bubble');
+    const bubbleWrap = botMsgEl.querySelector('.bubble-wrap');
+    let   textContent = '';
+    let   toolRevealed = false;
+
+    const payload = { message: text };
+    if (userId) payload.user_id = parseInt(userId);
+    if (sessionId) payload.session_id = sessionId;
+
+    try {
+      const resp = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop(); // giữ lại dòng chưa xong
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          let evt;
+          try { evt = JSON.parse(line.slice(6)); } catch { continue; }
+
+          if (evt.type === 'chunk') {
+            if (!toolRevealed) {
+              updateToolBadge(evt.tool, botMsgEl);
+              toolRevealed = true;
+              setStatus('Đang stream...', true);
+            }
+            textContent += evt.content;
+            bubbleEl.innerHTML = renderMarkdown(textContent) + '<span class="cursor"></span>';
+            if (evt.session_id && !sessionId) {
+              sessionId = evt.session_id;
+              const sdEl = document.getElementById('session-display');
+              sdEl.textContent = sessionId;
+              sdEl.classList.add('active');
+            }
+            scrollBottom();
+          } else if (evt.type === 'done') {
+            bubbleEl.innerHTML = renderMarkdown(evt.content || textContent);
+            if (evt.session_id) {
+              sessionId = evt.session_id;
+              const sdEl = document.getElementById('session-display');
+              sdEl.textContent = sessionId;
+              sdEl.classList.add('active');
+            }
+            if (evt.products && evt.products.length > 0) {
+              renderProducts(evt.products, bubbleWrap);
+            }
+            msgCount++;
+            document.getElementById('stat-msgs').textContent = msgCount;
+            setStatus('Sẵn sàng');
+          } else if (evt.type === 'error') {
+            bubbleEl.innerHTML = `<span style="color:var(--error)">⚠️ ${escHtml(evt.content)}</span>`;
+            setStatus('Lỗi');
+          }
+        }
+      }
+    } catch (e) {
+      bubbleEl.innerHTML = `<span style="color:var(--error)">❌ Không kết nối được: ${escHtml(e.message)}</span>`;
+      setStatus('Lỗi kết nối');
+    } finally {
+      sendBtn.disabled = false;
+    }
+  }
+
+  function scrollBottom() {
+    chatEl.scrollTop = chatEl.scrollHeight;
+  }
+
+  function escHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function renderMarkdown(str) {
+    const escaped = escHtml(str);
+    return escaped.replace(
+      /\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g,
+      '<a href="$2" target="_blank" class="product-link">$1</a>'
+    );
+  }
+
+  function fmtTime() {
+    return new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  function fmtPrice(n) {
+    if (!n && n !== 0) return '';
+    return Number(n).toLocaleString('vi-VN') + ' ₫';
+  }
+</script>
+</body>
+</html>
