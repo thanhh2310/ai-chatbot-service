@@ -75,8 +75,9 @@ Dựa vào câu hỏi, chọn TOOL phù hợp nhất và trích xuất arguments
 
 Quy tắc chọn tool:
 - Tìm sản phẩm cụ thể, hỏi tên sản phẩm → search_products
-- Tư vấn, hỏi tiếp, so sánh, chào hỏi, câu hỏi chung → chat_with_bot
-- "gợi ý cho tôi", "đề xuất sản phẩm", "có gì hay cho tôi" → get_recommendations
+- Tư vấn, hỏi tiếp, so sánh, chào hỏi, câu hỏi thường ngày → chat_with_bot
+- Câu hỏi cá nhân hóa như "hợp với tôi không", "body type", "size nào", "tôi thường thích gì" → chat_with_bot và luôn truyền user_id nếu có
+- "gợi ý cho tôi", "đề xuất sản phẩm", "có gì hay cho tôi" khi không có ràng buộc cụ thể → get_recommendations
 
 Quy tắc bắt buộc về arguments cho search_products:
 - LUÔN dùng key "query" (KHÔNG được dùng product_name, keyword, name, search_query hay bất kỳ tên nào khác).
@@ -114,7 +115,8 @@ def _fetch_product_details(product_ids: list[int]) -> list[dict]:
         rows = conn.execute(text("""
             SELECT p.id, p.name, p.base_price, p.description, p.slug,
                    b.name AS brand_name, c.name AS category_name,
-                   pi.image_url AS thumbnail_url
+                   pi.image_url AS thumbnail_url,
+                   COALESCE(attrs.in_stock_attributes, '') AS in_stock_attributes
             FROM products p
             LEFT JOIN brands b ON p.brand_id = b.id
             LEFT JOIN categories c ON p.category_id = c.id
@@ -124,7 +126,24 @@ def _fetch_product_details(product_ids: list[int]) -> list[dict]:
                 ORDER BY display_order ASC
                 LIMIT 1
             ) pi ON TRUE
+            LEFT JOIN LATERAL (
+                SELECT string_agg(DISTINCT a.name || ': ' || av.value, ', ' ORDER BY a.name || ': ' || av.value) AS in_stock_attributes
+                FROM product_skus sk
+                JOIN sku_values sv ON sv.product_sku_id = sk.id
+                JOIN attribute_values av ON av.id = sv.attribute_value_id
+                JOIN attributes a ON a.id = av.attribute_id
+                WHERE sk.product_id = p.id
+                  AND sk.is_active = TRUE
+                  AND sk.stock_quantity > 0
+            ) attrs ON TRUE
             WHERE p.id = ANY(:pids) AND p.is_active = TRUE
+              AND EXISTS (
+                  SELECT 1
+                  FROM product_skus sk
+                  WHERE sk.product_id = p.id
+                    AND sk.is_active = TRUE
+                    AND sk.stock_quantity > 0
+              )
         """), {"pids": product_ids}).mappings().all()
         return [dict(r) for r in rows]
 
@@ -140,6 +159,7 @@ def _format_products(products: list[dict]) -> str:
             f"{img}\n{link} | Giá: {p['base_price']:,.0f} VNĐ"
             f"{' | ' + p['brand_name'] if p['brand_name'] else ''}"
             f"{' | ' + p['category_name'] if p['category_name'] else ''}"
+            f"{' | Thuộc tính còn hàng: ' + p['in_stock_attributes'] if p.get('in_stock_attributes') else ''}"
             f"{' | ' + p['description'][:120] if p['description'] else ''}"
         )
     return "\n".join(parts)
@@ -163,7 +183,12 @@ def _exec_search(arguments: dict) -> tuple[str, list[dict]]:
 
     top_k = min(int(arguments.get("top_k", 5)), 20)
     category_id = arguments.get("category_id")
-    product_ids = search_similar_products(query_text=query, target_category_id=category_id, top_k=top_k)
+    product_ids = search_similar_products(
+        query_text=query,
+        target_category_id=category_id,
+        top_k=top_k,
+        user_id=arguments.get("user_id"),
+    )
     products = _fetch_product_details(product_ids)
     return _format_products(products), products
 
@@ -179,12 +204,15 @@ def _exec_recommend(arguments: dict) -> tuple[str, list[dict]]:
 def _exec_chat(arguments: dict, user_message: str) -> tuple[str, list[dict], str, list]:
     """Trả về: (context_text, products, session_id, history_messages)"""
     from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+    from app.services.chatbot_service import _build_personalization_context, _ensure_session_access
 
     sid = arguments.get("session_id")
     uid = arguments.get("user_id")
 
     with engine.connect() as conn:
-        if not sid:
+        if sid:
+            _ensure_session_access(conn, sid, uid)
+        else:
             sid = str(uuid.uuid4())
             conn.execute(text("INSERT INTO chatbot_sessions (id, user_id) VALUES (:id, :uid)"), {"id": sid, "uid": uid})
             conn.commit()
@@ -194,27 +222,54 @@ def _exec_chat(arguments: dict, user_message: str) -> tuple[str, list[dict], str
         conn.commit()
 
         # RAG context
-        retrieved_ids = search_similar_products(query_text=user_message, top_k=4)
+        retrieved_ids = search_similar_products(query_text=user_message, top_k=4, user_id=uid)
         if retrieved_ids:
             rows = conn.execute(text("""
                 SELECT p.id, p.name, p.base_price, p.description, p.slug,
-                       pi.image_url AS thumbnail_url
+                       pi.image_url AS thumbnail_url,
+                       COALESCE(attrs.in_stock_attributes, '') AS in_stock_attributes
                 FROM products p
                 LEFT JOIN LATERAL (
                     SELECT image_url FROM product_images
                     WHERE product_id = p.id AND is_thumbnail = TRUE
                     ORDER BY display_order ASC LIMIT 1
                 ) pi ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT string_agg(DISTINCT a.name || ': ' || av.value, ', ' ORDER BY a.name || ': ' || av.value) AS in_stock_attributes
+                    FROM product_skus sk
+                    JOIN sku_values sv ON sv.product_sku_id = sk.id
+                    JOIN attribute_values av ON av.id = sv.attribute_value_id
+                    JOIN attributes a ON a.id = av.attribute_id
+                    WHERE sk.product_id = p.id
+                      AND sk.is_active = TRUE
+                      AND sk.stock_quantity > 0
+                ) attrs ON TRUE
                 WHERE p.id = ANY(:pids)
+                  AND p.is_active = TRUE
+                  AND EXISTS (
+                      SELECT 1 FROM product_skus sk
+                      WHERE sk.product_id = p.id
+                        AND sk.is_active = TRUE
+                        AND sk.stock_quantity > 0
+                  )
             """), {"pids": retrieved_ids}).mappings().all()
             context_parts = []
+            retrieved_ids = []
             for r in rows:
+                retrieved_ids.append(r["id"])
                 link = f"[{r['name']}](http://localhost:8080/api/products/{r['id']})"
                 img = f"![{r['name']}]({r['thumbnail_url']})" if r.get('thumbnail_url') else ""
-                context_parts.append(f"{img}\n{link} | Giá: {r['base_price']} | Mô tả: {r['description']}")
+                context_parts.append(
+                    f"{img}\n{link} | Giá: {r['base_price']} | "
+                    f"Thuộc tính còn hàng: {r['in_stock_attributes'] or 'chưa có'} | "
+                    f"Mô tả: {r['description']}"
+                )
             context_text = "\n".join(context_parts)
         else:
             context_text = "Không có sản phẩm phù hợp."
+
+        personalization_text = _build_personalization_context(conn, uid)
+        context_text = f"[THÔNG TIN CÁ NHÂN HÓA]\n{personalization_text}\n\n[SẢN PHẨM]\n{context_text}"
 
         # History
         rows = conn.execute(text("""
@@ -238,7 +293,10 @@ def _exec_chat(arguments: dict, user_message: str) -> tuple[str, list[dict], str
 _CHAT_SYSTEM_PROMPT = """
 Bạn là nhân viên tư vấn bán hàng thể thao chuyên nghiệp, thân thiện.
 Xưng "em", gọi khách là "anh/chị".
-Chỉ tư vấn dựa trên thông tin trong phần [SẢN PHẨM].
+Chỉ tư vấn dựa trên thông tin trong phần [SẢN PHẨM] và dữ liệu cá nhân hóa đã được hệ thống truy xuất.
+Khi khách hỏi về size, màu hoặc thuộc tính sản phẩm, chỉ trả lời theo "Thuộc tính còn hàng" trong [SẢN PHẨM].
+Với câu hỏi về sở thích, body type, size, sản phẩm thường thích, hãy giải thích theo lịch sử hành vi/profile nếu có.
+Không khẳng định chắc chắn size chỉ từ chiều cao/cân nặng; hãy nói đó là ước lượng và nhắc khách kiểm tra bảng size nếu cần.
 Nếu không có sản phẩm phù hợp, nói: "Em chưa tìm được sản phẩm phù hợp trong cửa hàng, anh/chị có thể mô tả rõ hơn không ạ?"
 Không bịa thông tin giá, tên sản phẩm, hoặc tính năng ngoài ngữ cảnh.
 Trả lời ngắn gọn, tối đa 3-4 câu.
@@ -394,6 +452,9 @@ def handle_user_request_stream(
             ],
         }
 
+    except PermissionError as e:
+        logger.warning(f"⚠️ Agent từ chối truy cập session: {e}")
+        yield {"type": "error", "content": "Bạn không có quyền truy cập lịch sử chat này."}
     except Exception as e:
         logger.error(f"❌ Agent lỗi: {e}", exc_info=True)
         yield {"type": "error", "content": "Xin lỗi, đã có lỗi xảy ra. Vui lòng thử lại."}

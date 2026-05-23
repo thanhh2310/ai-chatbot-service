@@ -117,7 +117,7 @@ def smart_chat():
     if err:
         return err
 
-    message = (data.get("message") or "").strip()
+    message = (data.get("message") or data.get("query") or "").strip()
     if not message:
         return _err("Trường 'message' không được để trống.")
 
@@ -141,8 +141,12 @@ def smart_chat():
             "session_id":            result["session_id"],
             "reply":                 result["reply"],
             "suggested_product_ids": result["suggested_product_ids"],
+            "product_ids":           result["suggested_product_ids"],
         })
 
+    except PermissionError as e:
+        logger.warning(f"[CHAT] Truy cập session không hợp lệ session={session_id}: {e}")
+        return _err("Bạn không có quyền truy cập lịch sử chat này.", 403)
     except Exception as e:
         logger.error(f"[CHAT] Lỗi nội bộ session={session_id}: {e}", exc_info=True)
         return _err("Đã xảy ra lỗi khi xử lý chat. Vui lòng thử lại.", 500)

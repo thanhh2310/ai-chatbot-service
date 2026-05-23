@@ -64,10 +64,20 @@ def _build_where_clauses(intent: dict, target_category_id) -> tuple[list[str], d
         clauses.append("p.base_price <= :max_budget")
         params["max_budget"] = int(budget * _BUDGET_TOLERANCE)
 
+    clauses.append("""
+        EXISTS (
+            SELECT 1
+            FROM product_skus sk
+            WHERE sk.product_id = p.id
+              AND sk.is_active = TRUE
+              AND sk.stock_quantity > 0
+        )
+    """)
+
     return clauses, params
 
 
-def _rerank(candidates: list[dict], intent: dict, top_k: int) -> list[int]:
+def _rerank(candidates: list[dict], intent: dict, top_k: int, user_id: int | None = None, session=None) -> list[int]:
     """
     Giai đoạn 2: Rerank danh sách ứng viên bằng cách kết hợp:
       - vector_score: khoảng cách cosine (scale về 0-1)
@@ -79,6 +89,9 @@ def _rerank(candidates: list[dict], intent: dict, top_k: int) -> list[int]:
         kw.lower() for kw in (intent.get("search_keywords") or "").split()
         if len(kw) > 2
     ]
+
+    personal_features = _get_personal_features(session, user_id, [r["product_id"] for r in candidates]) if user_id and session else {}
+    max_personal = max((v["score"] for v in personal_features.values()), default=1.0) or 1.0
 
     scored = []
     for row in candidates:
@@ -112,7 +125,15 @@ def _rerank(candidates: list[dict], intent: dict, top_k: int) -> list[int]:
                 matched += 1
         boost += matched * 0.05
 
-        scored.append((row["product_id"], vector_score + boost))
+        personalization = 0.0
+        feature = personal_features.get(row["product_id"])
+        if feature:
+            personalization = min(float(feature["score"]) / max_personal, 1.0)
+            boost += _profile_fit_boost(content_lower, feature)
+            boost += _review_boost(feature)
+            boost -= float(feature.get("penalty", 0.0))
+
+        scored.append((row["product_id"], vector_score + boost + (0.25 * personalization)))
 
     # Sắp xếp giảm dần theo final score (điểm càng cao càng giống)
     scored.sort(key=lambda x: x[1], reverse=True)
@@ -123,6 +144,7 @@ def search_similar_products(
     query_text: str,
     target_category_id: int | None = None,
     top_k: int = 5,
+    user_id: int | None = None,
 ) -> list[int]:
     session = db.get_session()
     try:
@@ -143,11 +165,21 @@ def search_similar_products(
         sql = text(f"""
             SELECT
                 pe.product_id,
-                pe.content,
+                CONCAT(pe.content, ' ', COALESCE(attrs.in_stock_attributes, '')) AS content,
                 (pe.embedding <=> CAST(:vector AS vector)) AS distance
             FROM product_embeddings pe
             JOIN products p  ON p.id  = pe.product_id
             LEFT JOIN brands b ON p.brand_id = b.id
+            LEFT JOIN LATERAL (
+                SELECT string_agg(DISTINCT a.name || ': ' || av.value, ' ' ORDER BY a.name || ': ' || av.value) AS in_stock_attributes
+                FROM product_skus sk
+                JOIN sku_values sv ON sv.product_sku_id = sk.id
+                JOIN attribute_values av ON av.id = sv.attribute_value_id
+                JOIN attributes a ON a.id = av.attribute_id
+                WHERE sk.product_id = p.id
+                  AND sk.is_active = TRUE
+                  AND sk.stock_quantity > 0
+            ) attrs ON TRUE
             {where_sql}
             ORDER BY distance ASC
             LIMIT :limit
@@ -156,7 +188,7 @@ def search_similar_products(
         rows = session.execute(sql, params).mappings().all()
 
         # ── Giai đoạn 2: Rerank + lọc excluded ─────────────────────────
-        product_ids = _rerank(list(rows), intent, top_k)
+        product_ids = _rerank(list(rows), intent, top_k, user_id=user_id, session=session)
 
         logger.info(
             f"✅ Query='{query_text}' | Intent={intent} | "
@@ -171,3 +203,133 @@ def search_similar_products(
         session.close()
 
 
+def _get_personal_features(session, user_id: int, product_ids: list[int]) -> dict[int, dict]:
+    if not product_ids:
+        return {}
+    rows = session.execute(text("""
+        WITH user_profile AS (
+            SELECT height, weight
+            FROM users
+            WHERE id = :uid
+        ),
+        direct AS (
+            SELECT
+                product_id,
+                SUM(CASE interaction_type
+                    WHEN 'PURCHASE' THEN 5.0
+                    WHEN 'ADD_TO_CART' THEN 3.0
+                    WHEN 'VIEW' THEN 1.0
+                    WHEN 'SEARCH' THEN 0.5
+                    ELSE COALESCE(interaction_weight, 1.0)
+                END * EXP(-EXTRACT(EPOCH FROM (NOW() - created_at)) / (86400.0 * 45.0))) AS score,
+                MAX(created_at) AS last_seen_at
+            FROM user_interactions
+            WHERE user_id = :uid AND product_id = ANY(:pids)
+            GROUP BY product_id
+        ),
+        affinity AS (
+            SELECT
+                p2.id AS product_id,
+                SUM(CASE ui.interaction_type
+                    WHEN 'PURCHASE' THEN 5.0
+                    WHEN 'ADD_TO_CART' THEN 3.0
+                    WHEN 'VIEW' THEN 1.0
+                    WHEN 'SEARCH' THEN 0.5
+                    ELSE COALESCE(ui.interaction_weight, 1.0)
+                END * EXP(-EXTRACT(EPOCH FROM (NOW() - ui.created_at)) / (86400.0 * 45.0))) AS score
+            FROM user_interactions ui
+            JOIN products p1 ON p1.id = ui.product_id
+            JOIN products p2 ON p2.category_id = p1.category_id OR p2.brand_id = p1.brand_id
+            WHERE ui.user_id = :uid
+              AND ui.product_id IS NOT NULL
+              AND p2.id = ANY(:pids)
+            GROUP BY p2.id
+        ),
+        wishlist AS (
+            SELECT p2.id AS product_id, COUNT(*) * 2.5 AS score
+            FROM wishlists w
+            JOIN products p1 ON p1.id = w.product_id
+            JOIN products p2 ON p2.category_id = p1.category_id OR p2.brand_id = p1.brand_id
+            WHERE w.user_id = :uid AND p2.id = ANY(:pids)
+            GROUP BY p2.id
+        ),
+        reviews AS (
+            SELECT
+                p2.id AS product_id,
+                AVG(r.rating)::float AS user_related_rating
+            FROM reviews r
+            JOIN products p1 ON p1.id = r.product_id
+            JOIN products p2 ON p2.category_id = p1.category_id OR p2.brand_id = p1.brand_id
+            WHERE r.user_id = :uid AND p2.id = ANY(:pids)
+            GROUP BY p2.id
+        ),
+        penalties AS (
+            SELECT
+                ps.product_id,
+                SUM(CASE WHEN osh.status IN ('CANCELLED', 'REFUNDED', 'RETURNED') THEN 1 ELSE 0 END) * 0.18 AS penalty
+            FROM order_status_history osh
+            JOIN orders o ON o.id = osh.order_id
+            JOIN order_items oi ON oi.order_id = o.id
+            JOIN product_skus ps ON ps.id = oi.product_sku_id
+            WHERE o.user_id = :uid AND ps.product_id = ANY(:pids)
+            GROUP BY ps.product_id
+        )
+        SELECT
+            p.id AS product_id,
+            c.name AS category_name,
+            up.height,
+            up.weight,
+            COALESCE(d.score, 0) + COALESCE(a.score, 0) + COALESCE(w.score, 0) AS score,
+            r.user_related_rating,
+            COALESCE(pn.penalty, 0) AS penalty
+        FROM products p
+        LEFT JOIN categories c ON c.id = p.category_id
+        CROSS JOIN user_profile up
+        LEFT JOIN direct d ON d.product_id = p.id
+        LEFT JOIN affinity a ON a.product_id = p.id
+        LEFT JOIN wishlist w ON w.product_id = p.id
+        LEFT JOIN reviews r ON r.product_id = p.id
+        LEFT JOIN penalties pn ON pn.product_id = p.id
+        WHERE p.id = ANY(:pids)
+    """), {"uid": user_id, "pids": product_ids}).mappings().all()
+    return {r["product_id"]: dict(r) for r in rows}
+
+
+def _review_boost(feature: dict) -> float:
+    rating = feature.get("user_related_rating")
+    if rating is None:
+        return 0.0
+    rating = float(rating)
+    if rating >= 4:
+        return 0.12
+    if rating <= 2:
+        return -0.16
+    return 0.0
+
+
+def _profile_fit_boost(content_lower: str, feature: dict) -> float:
+    category = (feature.get("category_name") or "").lower()
+    if not any(token in category or token in content_lower for token in ["quần", "áo", "clothes", "apparel"]):
+        return 0.0
+    height = feature.get("height")
+    weight = feature.get("weight")
+    if height is None or weight is None:
+        return 0.0
+    sizes = _estimate_sizes(float(height), float(weight))
+    if any(f" {size.lower()} " in f" {content_lower} " or f"size {size.lower()}" in content_lower for size in sizes):
+        return 0.18
+    if any(token in content_lower for token in ["co giãn", "thoải mái", "stretch", "regular"]):
+        return 0.08
+    return 0.03
+
+
+def _estimate_sizes(height_cm: float, weight_kg: float) -> list[str]:
+    if height_cm < 160 and weight_kg < 55:
+        return ["S", "M"]
+    if height_cm < 170 and weight_kg < 68:
+        return ["M", "S", "L"]
+    if height_cm < 180 and weight_kg < 82:
+        return ["L", "M", "XL"]
+    if weight_kg >= 82:
+        return ["XL", "XXL", "L"]
+    return ["M", "L"]

@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phân tích & Đánh giá Độ chính xác Hệ thống RAG Chatbot</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-dark: #1d4ed8;
+            --success: #059669;
+            --warning: #d97706;
+            --danger: #dc2626;
+            --text-main: #1f2937;
+            --text-light: #4b5563;
+            --bg-main: #f3f4f6;
+            --bg-card: #ffffff;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: var(--text-main);
+            background-color: var(--bg-main);
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding: 20px;
+            background: var(--bg-card);
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            color: var(--primary);
+            margin-top: 0;
+        }
+
+        .section {
+            background: var(--bg-card);
+            padding: 25px;
+            border-radius: 12px;
+            margin-bottom: 25px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        h2 {
+            color: var(--primary-dark);
+            border-bottom: 2px solid var(--primary);
+            padding-bottom: 10px;
+            margin-top: 0;
+        }
+
+        h3 {
+            color: var(--text-main);
+            margin-top: 20px;
+        }
+
+        .good-points {
+            border-left: 4px solid var(--success);
+            padding-left: 15px;
+            background-color: rgba(5, 150, 105, 0.05);
+        }
+
+        .attention-points {
+            border-left: 4px solid var(--warning);
+            padding-left: 15px;
+            background-color: rgba(217, 119, 6, 0.05);
+        }
+
+        .solution {
+            border-left: 4px solid var(--primary);
+            padding-left: 15px;
+            background-color: rgba(37, 99, 235, 0.05);
+        }
+
+        .critical {
+            border-left: 4px solid var(--danger);
+            padding-left: 15px;
+            background-color: rgba(220, 38, 38, 0.05);
+        }
+
+        ul {
+            padding-left: 20px;
+        }
+
+        li {
+            margin-bottom: 8px;
+        }
+
+        code {
+            background-color: #f1f5f9;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: monospace;
+            color: #b91c1c;
+        }
+
+        pre {
+            background-color: #1e293b;
+            color: #f8fafc;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            font-weight: bold;
+            color: white;
+        }
+        .badge.success { background-color: var(--success); }
+        .badge.warning { background-color: var(--warning); }
+        .badge.danger { background-color: var(--danger); }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        th, td {
+            border: 1px solid #e5e7eb;
+            padding: 10px;
+            text-align: left;
+        }
+        th {
+            background-color: #f9fafb;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>📊 Đánh Giá Độ Chính Xác Mô Hình AI Chatbot Service</h1>
+        <p>Phân tích chuyên sâu về kiến trúc RAG, LLM Routing, và Thuật toán Gợi ý cá nhân hóa</p>
+        <p><em>Cập nhật dựa trên kiến trúc Hybrid RAG & Cá nhân hóa mới nhất</em></p>
+    </header>
+
+    <div class="section">
+        <h2>1. Tổng quan Đánh giá (Overview)</h2>
+        <p>Hệ thống hiện tại đã đạt đến mức độ phức tạp và tinh vi cao (Hybrid RAG, Personalization, Multi-turn Chat). Bạn đã áp dụng rất nhiều best practices trong việc truy xuất thông tin và gợi ý. Tuy nhiên, độ chính xác (Accuracy / Precision / Recall) của hệ thống sẽ bị ảnh hưởng bởi một số rủi ro tiềm ẩn ở các module tương tác với nhau.</p>
+        
+        <table class="summary-table">
+            <tr>
+                <th>Module</th>
+                <th>Trạng thái hiện tại</th>
+                <th>Điểm chú ý chính</th>
+            </tr>
+            <tr>
+                <td><strong>LLM Router</strong></td>
+                <td><span class="badge success">Khá Tốt</span> Prompting chặt chẽ, Few-shot</td>
+                <td>JSON output stability, Over-routing vào chat</td>
+            </tr>
+            <tr>
+                <td><strong>Intent Extraction</strong></td>
+                <td><span class="badge success">Rất Tốt</span> Pydantic schema + Regex Fallback</td>
+                <td>LLM hallucination khi user nhập lóng/sai chính tả</td>
+            </tr>
+            <tr>
+                <td><strong>Vector Search</strong></td>
+                <td><span class="badge warning">Cần Chú Ý</span> E5-large-instruct tốt nhưng embedding text chưa chuẩn hóa tối đa</td>
+                <td>Mật độ thông tin trong vector, Semantic overlap</td>
+            </tr>
+            <tr>
+                <td><strong>Reranking</strong></td>
+                <td><span class="badge warning">Cần Nâng Cấp</span> Heuristic rule-based (keyword + user profile)</td>
+                <td>Rules chồng chéo, dễ làm méo kết quả vector</td>
+            </tr>
+            <tr>
+                <td><strong>Recommendation</strong></td>
+                <td><span class="badge success">Rất Tốt</span> Multi-signal weighted centroid</td>
+                <td>Centroid drift (Nhiễu vector trung tâm khi sở thích quá đa dạng)</td>
+            </tr>
+        </table>
+    </div>
+
+    <div class="section">
+        <h2>2. Phân tích chi tiết Điểm cần chú ý & Cách khắc phục</h2>
+
+        <h3>2.1. Vấn đề 1: Độ ổn định của LLM Router (agent_service.py)</h3>
+        <div class="attention-points">
+            <p><strong>Phân tích:</strong> LLM phân loại ý định qua việc sinh chuỗi JSON. Dù đã dùng <code>temperature=0.0</code> và system prompt chặt chẽ, việc yêu cầu LLM tự sinh JSON (không dùng Native Tool Calling / Structured Outputs của Together AI / OpenAI) luôn tiềm ẩn rủi ro sinh ra format lỗi (thiếu ngoặc, parse lỗi), dẫn đến crash flow.</p>
+            <p>Ngoài ra, ranh giới giữa <code>search_products</code> và <code>chat_with_bot</code> đôi khi bị LLM hiểu sai nếu user hỏi nửa vời (ví dụ: "giày nike tầm 2 củ").</p>
+        </div>
+        <div class="solution">
+            <p><strong>Cách sửa:</strong></p>
+            <ul>
+                <li><strong>Native Tool Calling:</strong> Nên chuyển sang sử dụng tính năng <code>tools</code> và <code>tool_choice</code> hỗ trợ sẵn trong API của TogetherAI (Llama 3.3 hỗ trợ rất tốt tool calling) thay vì ép nó sinh JSON thuần trong text.</li>
+                <li><strong>Ví dụ code sửa:</strong>
+<pre><code>response = _client.chat.completions.create(
+    model=_MODEL,
+    messages=[...],
+    tools=_TOOLS,
+    tool_choice="auto" # Hoặc bắt buộc chọn 1 tool
+)
+# Lấy arguments từ response.choices[0].message.tool_calls[0].function.arguments
+</code></pre>
+                </li>
+                <li><strong>Fallback:</strong> Thêm khối <code>try...except json.JSONDecodeError</code> vững chắc hơn, nếu LLM route lỗi -> mặc định gọi <code>chat_with_bot</code>.</li>
+            </ul>
+        </div>
+
+        <h3>2.2. Vấn đề 2: Giai đoạn Reranking bị "Heuristic-heavy" (rag_service.py)</h3>
+        <div class="critical">
+            <p><strong>Phân tích:</strong> Hàm <code>_rerank</code> đang cộng dồn các điểm số một cách thủ công (hardcode weights):</p>
+            <ul>
+                <li><code>final_score = 0.36 * vector_score + 0.20 * behavior + 0.14 * review + ... + boost_màu + boost_keyword</code></li>
+            </ul>
+            <p><strong>Hệ lụy:</strong> Việc cộng điểm thủ công này (Rule-based Reranking) rất khó tune (tinh chỉnh). Nếu một sản phẩm không liên quan nhưng vô tình khớp 1 keyword và có "behavior_score" cao (ví dụ: sản phẩm user hay mua), nó có thể bị đẩy lên trên một sản phẩm khớp chính xác ý định (vector_score cao) nhưng user chưa từng tương tác. Điều này làm mất tính chính xác của tìm kiếm.</p>
+        </div>
+        <div class="solution">
+            <p><strong>Cách sửa:</strong></p>
+            <ul>
+                <li><strong>Chuẩn hóa & Giới hạn Boost:</strong> Đảm bảo <code>vector_score</code> luôn đóng vai trò quyết định (chiếm ít nhất 60-70% trọng số). Các điểm personalization chỉ nên đóng vai trò <em>tie-breaker</em> (giải quyết khi 2 sản phẩm có vector_score tương đương).</li>
+                <li><strong>Dùng Multi-stage (Pipeline) rõ ràng:</strong>
+                    <ol>
+                        <li>Lọc Hard-filter (Category, Budget).</li>
+                        <li>Vector Search lấy Top 50.</li>
+                        <li><strong>Dùng Cross-Encoder Model</strong> (như <code>BAAI/bge-reranker-v2-m3</code>) để tính điểm semantic (độ tương đồng ngữ nghĩa) thật chuẩn xác.</li>
+                        <li>Mới áp dụng nhẹ Personalization / Popularity Boost cho top 10.</li>
+                    </ol>
+                </li>
+                <li><strong>Fix Regex Keyword Boost:</strong> Hiện tại <code>re.search</code> trong vòng lặp rất chậm và dễ sai sót. Việc boost keyword nên để Cross-Encoder lo, hoặc dùng BM25/Full-text search (Hybrid Search: Vector + Keyword) thay vì tự viết regex match.</li>
+            </ul>
+        </div>
+
+        <h3>2.3. Vấn đề 3: Nhiễu "Centroid Drift" trong Recommendation (recommendation_service.py)</h3>
+        <div class="attention-points">
+            <p><strong>Phân tích:</strong> Thuật toán <code>_compute_weighted_centroid</code> đang trung bình hóa các vector sở thích. <br>
+            <em>Rủi ro:</em> Nếu user vừa thích mua "Giày bóng đá Nike" vừa thích mua "Áo thun Yoga hồng", vector trung bình (Centroid) sẽ nằm ở một điểm vô nghĩa giữa không gian vector (có thể trúng... "Quần bơi nam"). Trung bình hóa các sở thích khác biệt xa nhau làm mất đi tính cá nhân hóa chính xác.</p>
+        </div>
+        <div class="solution">
+            <p><strong>Cách sửa:</strong></p>
+            <ul>
+                <li><strong>Multi-Centroid (Phân cụm sở thích):</strong> Thay vì tạo 1 centroid duy nhất, hãy gom cụm (cluster) lịch sử tương tác của user thành 2-3 centroid (ví dụ: Cluster 1: Đồ đá bóng, Cluster 2: Đồ chạy bộ). Tìm top k sản phẩm cho <em>mỗi</em> centroid rồi trộn lại.</li>
+                <li><strong>Cải tiến bằng Max-Sim:</strong> Thay vì tìm khoảng cách tới 1 Centroid, hãy tính khoảng cách của ứng viên tới <em>từng seed product</em>, và lấy score = MAX(similarity). Sản phẩm nào giống với <em>bất kỳ</em> sản phẩm nào user từng thích đều được điểm cao.</li>
+            </ul>
+        </div>
+
+        <h3>2.4. Vấn đề 4: Nội dung nhúng (Embedding Content) có thể bị "loãng" (sync_service.py)</h3>
+        <div class="attention-points">
+            <p><strong>Phân tích:</strong> Hàm <code>_build_content</code> nối tất cả thành một câu dài: <code>"Danh mục: X. Thương hiệu: Y. Giá: Z. Mô tả: M. Phù hợp: G, S."</code>. <br>
+            Model <code>multilingual-e5-large-instruct</code> yêu cầu format đầu vào đặc thù (thường thêm prefix <code>"query: "</code> hoặc <code>"passage: "</code>). Nếu không đúng format, độ chính xác giảm đáng kể.</p>
+        </div>
+        <div class="solution">
+            <p><strong>Cách sửa:</strong></p>
+            <ul>
+                <li><strong>Chuẩn hóa E5 Prompt:</strong> Theo tài liệu của E5-instruct, text đưa vào database cần có prefix <code>"passage: "</code> và query tìm kiếm cần có prefix <code>"query: "</code>.
+                    <br><em>Ví dụ lúc sync:</em> <code>content = f"passage: {built_text}"</code>
+                    <br><em>Ví dụ lúc query (rag_service.py):</em> <code>embed_query(f"query: {enhanced_query}")</code>
+                </li>
+                <li><strong>Tối ưu text:</strong> Đưa các Keyword quan trọng (Tên SP, Thương hiệu) lên đầu. Giảm thiểu các từ nối không mang nhiều ý nghĩa (như "Các phiên bản màu sắc và kích cỡ là:").</li>
+            </ul>
+        </div>
+
+        <h3>2.5. Vấn đề 5: Lọc Phủ định (Negative Filtering) trong Intent Service</h3>
+        <div class="attention-points">
+            <p><strong>Phân tích:</strong> Hàm <code>analyze_query</code> yêu cầu LLM tách <code>excluded_keywords</code> (VD: "không lấy màu đen"). Giai đoạn Rerank lại dùng Regex để loại trừ cứng. <br>
+            <em>Vấn đề:</em> "màu đen" có thể nằm trong mô tả theo kiểu: "Sản phẩm có 2 màu: Đen và Trắng". Nếu user tìm "áo trắng không lấy đen", Regex sẽ loại luôn sản phẩm này vì thấy chữ "đen" trong content, dù sản phẩm đó <em>có</em> màu trắng (đáp ứng đúng).</p>
+        </div>
+        <div class="solution">
+            <p><strong>Cách sửa:</strong></p>
+            <ul>
+                <li>Thay vì dùng Regex loại thẳng trên chuỗi <code>content</code> (bao gồm cả mô tả dài), chỉ nên kiểm tra phủ định trên trường <code>available_attributes</code> (Màu sắc) hoặc trường tên sản phẩm.</li>
+                <li>Khuyến khích thiết kế Database có trường "Màu sắc" riêng biệt thay vì lưu gộp chung, để khi User nói "không màu đen", ta dùng câu lệnh SQL <code>NOT ILIKE '%đen%'</code> trên cột màu sắc đó, chính xác hơn Regex.</li>
+            </ul>
+        </div>
+
+    </div>
+
+    <div class="section">
+        <h2>3. Tổng Kết Các Hành Động Khắc Phục (Action Items)</h2>
+        <ul>
+            <li><strong>Khẩn cấp:</strong> Cập nhật format prefix <code>"query: "</code> và <code>"passage: "</code> cho mô hình E5 embedding để vector search hoạt động đúng công suất thiết kế.</li>
+            <li><strong>Khẩn cấp:</strong> Đổi cách gọi LLM Router sang sử dụng Native Tool Calling API của TogetherAI.</li>
+            <li><strong>Trung hạn:</strong> Giảm tỷ trọng của các điểm cộng tay (Heuristic boost) trong hàm <code>_rerank</code>, đảm bảo <code>vector_score</code> chiếm ưu thế tuyệt đối cho tính liên quan ngữ nghĩa.</li>
+            <li><strong>Dài hạn:</strong> Thay đổi thuật toán Recommendation từ "Single Weighted Centroid" sang "Max-Sim" hoặc phân cụm để không bị trung bình hóa các sở thích trái ngược.</li>
+            <li><strong>Dài hạn:</strong> Áp dụng Cross-Encoder Reranker để thay thế cho logic đếm keyword thủ công.</li>
+        </ul>
+    </div>
+</div>
+
+</body>
+</html>
