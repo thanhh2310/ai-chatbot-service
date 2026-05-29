@@ -10,8 +10,9 @@ logger = logging.getLogger(__name__)
 # Dung sai ngân sách: +15% để không bỏ sót sản phẩm cận giá
 _BUDGET_TOLERANCE = 1.15
 
-# Số ứng viên lấy ở giai đoạn 1 (luôn gấp bội top_k để có đủ để rerank)
-_CANDIDATE_MULTIPLIER = 4
+# Số ứng viên lấy ở giai đoạn 1. Lấy rộng hơn để rerank có đủ ứng viên khi vector miss.
+_CANDIDATE_MULTIPLIER = 12
+_MIN_CANDIDATES = 40
 
 _BRAND_ALIASES = {
     "nike": ["nike", "nai"],
@@ -91,6 +92,27 @@ def _strip_brand_terms(query: str, brand: str) -> str:
     return re.sub(r"\s+", " ", clean).strip()
 
 
+def _keyword_terms(intent: dict) -> list[str]:
+    raw = " ".join(filter(None, [
+        intent.get("search_keywords") or "",
+        intent.get("sport_type") or "",
+        intent.get("color_preference") or "",
+        intent.get("price_tier") or "",
+    ])).lower()
+    stopwords = {
+        "cho", "cua", "của", "toi", "tôi", "anh", "chị", "em", "can", "cần",
+        "muon", "muốn", "mua", "san", "sản", "pham", "phẩm", "hang", "hàng",
+        "gia", "giá", "voi", "với", "khong", "không", "lay", "lấy",
+    }
+    terms = []
+    for term in re.findall(r"[\wÀ-ỹ-]+", raw, flags=re.UNICODE):
+        if len(term) < 2 or term in stopwords:
+            continue
+        if term not in terms:
+            terms.append(term)
+    return terms[:10]
+
+
 def _build_where_clauses(intent: dict, target_category_id) -> tuple[list[str], dict]:
     """
     Trả về (where_clauses, params) cho bộ lọc cứng ở giai đoạn 1.
@@ -101,7 +123,7 @@ def _build_where_clauses(intent: dict, target_category_id) -> tuple[list[str], d
 
     # Lọc danh mục — ưu tiên từ UI (caller), fallback sang AI
     if cat_id := target_category_id or intent.get("category_id"):
-        clauses.append("pe.category_id = :cat_id")
+        clauses.append("p.category_id = :cat_id")
         params["cat_id"] = cat_id
 
     # Lọc thương hiệu
@@ -127,6 +149,140 @@ def _build_where_clauses(intent: dict, target_category_id) -> tuple[list[str], d
     return clauses, params
 
 
+def _merge_candidates(*candidate_lists: list[dict]) -> list[dict]:
+    merged: dict[int, dict] = {}
+    for candidates in candidate_lists:
+        for row in candidates:
+            pid = row["product_id"]
+            existing = merged.get(pid)
+            if not existing:
+                merged[pid] = dict(row)
+                continue
+            existing["distance"] = min(float(existing.get("distance", 1.2)), float(row.get("distance", 1.2)))
+            existing["lexical_score"] = max(float(existing.get("lexical_score", 0.0)), float(row.get("lexical_score", 0.0)))
+            if len(row.get("content") or "") > len(existing.get("content") or ""):
+                existing["content"] = row.get("content")
+    return list(merged.values())
+
+
+def _find_vector_candidates(session, query_vector: list[float], intent: dict, target_category_id: int | None, limit: int) -> list[dict]:
+    where_clauses, params = _build_where_clauses(intent, target_category_id)
+    where_sql = "WHERE " + " AND ".join(where_clauses)
+    params.update({"vector": str(query_vector), "limit": limit})
+
+    sql = text(f"""
+        SELECT
+            pe.product_id,
+            CONCAT(pe.content, ' ', COALESCE(attrs.in_stock_attributes, '')) AS content,
+            (pe.embedding <=> CAST(:vector AS vector)) AS distance,
+            0.0::float AS lexical_score
+        FROM product_embeddings pe
+        JOIN products p  ON p.id  = pe.product_id
+        LEFT JOIN brands b ON p.brand_id = b.id
+        LEFT JOIN categories c ON c.id = p.category_id
+        LEFT JOIN LATERAL (
+            SELECT string_agg(DISTINCT a.name || ': ' || av.value, ' ' ORDER BY a.name || ': ' || av.value) AS in_stock_attributes
+            FROM product_skus sk
+            JOIN sku_values sv ON sv.product_sku_id = sk.id
+            JOIN attribute_values av ON av.id = sv.attribute_value_id
+            JOIN attributes a ON a.id = av.attribute_id
+            WHERE sk.product_id = p.id
+              AND sk.is_active = TRUE
+              AND sk.stock_quantity > 0
+        ) attrs ON TRUE
+        {where_sql}
+        ORDER BY distance ASC
+        LIMIT :limit
+    """)
+    return [dict(r) for r in session.execute(sql, params).mappings().all()]
+
+
+def _find_lexical_candidates(session, intent: dict, target_category_id: int | None, limit: int) -> list[dict]:
+    terms = _keyword_terms(intent)
+    if not terms:
+        return []
+
+    where_clauses, params = _build_where_clauses(intent, target_category_id)
+    text_blob = "LOWER(CONCAT_WS(' ', p.name, p.description, b.name, c.name, attrs.in_stock_attributes))"
+
+    term_filters = []
+    score_parts = []
+    for i, term_value in enumerate(terms):
+        key = f"term_{i}"
+        params[key] = f"%{term_value}%"
+        term_filters.append(f"{text_blob} LIKE :{key}")
+        score_parts.append(f"""
+            CASE
+                WHEN LOWER(p.name) LIKE :{key} THEN 4.0
+                WHEN LOWER(COALESCE(attrs.in_stock_attributes, '')) LIKE :{key} THEN 3.0
+                WHEN LOWER(COALESCE(c.name, '')) LIKE :{key} THEN 2.0
+                WHEN LOWER(COALESCE(p.description, '')) LIKE :{key} THEN 1.0
+                ELSE 0.0
+            END
+        """)
+
+    where_clauses.append("(" + " OR ".join(term_filters) + ")")
+    where_sql = "WHERE " + " AND ".join(where_clauses)
+    params["limit"] = limit
+
+    sql = text(f"""
+        SELECT
+            p.id AS product_id,
+            CONCAT_WS(' ', p.name, p.description, b.name, c.name, attrs.in_stock_attributes) AS content,
+            1.2::float AS distance,
+            ({" + ".join(score_parts)}) AS lexical_score
+        FROM products p
+        LEFT JOIN product_embeddings pe ON pe.product_id = p.id
+        LEFT JOIN brands b ON p.brand_id = b.id
+        LEFT JOIN categories c ON c.id = p.category_id
+        LEFT JOIN LATERAL (
+            SELECT string_agg(DISTINCT a.name || ': ' || av.value, ' ' ORDER BY a.name || ': ' || av.value) AS in_stock_attributes
+            FROM product_skus sk
+            JOIN sku_values sv ON sv.product_sku_id = sk.id
+            JOIN attribute_values av ON av.id = sv.attribute_value_id
+            JOIN attributes a ON a.id = av.attribute_id
+            WHERE sk.product_id = p.id
+              AND sk.is_active = TRUE
+              AND sk.stock_quantity > 0
+        ) attrs ON TRUE
+        {where_sql}
+        ORDER BY lexical_score DESC, p.updated_at DESC NULLS LAST
+        LIMIT :limit
+    """)
+    return [dict(r) for r in session.execute(sql, params).mappings().all()]
+
+
+def _find_broad_candidates(session, intent: dict, target_category_id: int | None, limit: int) -> list[dict]:
+    where_clauses, params = _build_where_clauses(intent, target_category_id)
+    where_sql = "WHERE " + " AND ".join(where_clauses)
+    params["limit"] = limit
+
+    sql = text(f"""
+        SELECT
+            p.id AS product_id,
+            CONCAT_WS(' ', p.name, p.description, b.name, c.name, attrs.in_stock_attributes) AS content,
+            1.4::float AS distance,
+            0.0::float AS lexical_score
+        FROM products p
+        LEFT JOIN brands b ON p.brand_id = b.id
+        LEFT JOIN categories c ON c.id = p.category_id
+        LEFT JOIN LATERAL (
+            SELECT string_agg(DISTINCT a.name || ': ' || av.value, ' ' ORDER BY a.name || ': ' || av.value) AS in_stock_attributes
+            FROM product_skus sk
+            JOIN sku_values sv ON sv.product_sku_id = sk.id
+            JOIN attribute_values av ON av.id = sv.attribute_value_id
+            JOIN attributes a ON a.id = av.attribute_id
+            WHERE sk.product_id = p.id
+              AND sk.is_active = TRUE
+              AND sk.stock_quantity > 0
+        ) attrs ON TRUE
+        {where_sql}
+        ORDER BY p.updated_at DESC NULLS LAST, p.created_at DESC NULLS LAST
+        LIMIT :limit
+    """)
+    return [dict(r) for r in session.execute(sql, params).mappings().all()]
+
+
 def _rerank(candidates: list[dict], intent: dict, top_k: int, user_id: int | None = None, session=None) -> list[int]:
     """
     Giai đoạn 2: Rerank danh sách ứng viên bằng cách kết hợp:
@@ -142,6 +298,7 @@ def _rerank(candidates: list[dict], intent: dict, top_k: int, user_id: int | Non
 
     personal_features = _get_personal_features(session, user_id, [r["product_id"] for r in candidates]) if user_id and session else {}
     max_personal = max((v["score"] for v in personal_features.values()), default=1.0) or 1.0
+    max_lexical = max((float(r.get("lexical_score", 0.0)) for r in candidates), default=1.0) or 1.0
 
     scored = []
     for row in candidates:
@@ -159,7 +316,8 @@ def _rerank(candidates: list[dict], intent: dict, top_k: int, user_id: int | Non
 
         # 2. FIX: Chuyển Cosine Distance (0-2) -> Cosine Similarity (0-1)
         # Điểm distance của pgvector chạy từ 0 đến 2. Chia 2 để giới hạn về 1, rồi lấy 1 trừ đi.
-        vector_score = 1.0 - (float(row["distance"]) / 2.0)
+        vector_score = max(0.0, 1.0 - (float(row.get("distance", 1.2)) / 2.0))
+        lexical_score = min(float(row.get("lexical_score", 0.0)) / max_lexical, 1.0)
 
         # Điểm thưởng
         boost = 0.0
@@ -173,7 +331,8 @@ def _rerank(candidates: list[dict], intent: dict, top_k: int, user_id: int | Non
         for kw in boost_keywords:
             if re.search(rf'(?:^|\s|\W|_){re.escape(kw)}(?:$|\s|\W|_)', content_lower, flags=re.IGNORECASE | re.UNICODE):
                 matched += 1
-        boost += matched * 0.05
+        keyword_score = min(matched / max(len(boost_keywords), 1), 1.0)
+        boost += matched * 0.04
 
         personalization = 0.0
         feature = personal_features.get(row["product_id"])
@@ -183,7 +342,14 @@ def _rerank(candidates: list[dict], intent: dict, top_k: int, user_id: int | Non
             boost += _review_boost(feature)
             boost -= float(feature.get("penalty", 0.0))
 
-        scored.append((row["product_id"], vector_score + boost + (0.25 * personalization)))
+        final_score = (
+            0.42 * vector_score
+            + 0.28 * lexical_score
+            + 0.15 * keyword_score
+            + 0.15 * personalization
+            + boost
+        )
+        scored.append((row["product_id"], final_score))
 
     # Sắp xếp giảm dần theo final score (điểm càng cao càng giống)
     scored.sort(key=lambda x: x[1], reverse=True)
@@ -202,48 +368,33 @@ def search_similar_products(
         intent = analyze_query(query_text)
         intent = _prepare_intent_for_catalog(session, intent)
 
-        # ── Giai đoạn 1: Vector search — lấy nhiều ứng viên (top_k * 4) ─
+        # ── Giai đoạn 1: Vector + lexical/attribute candidates ──────────
         enhanced_query = _build_enhanced_query(intent)
-        query_vector   = embed_query(enhanced_query)
-
-        where_clauses, params = _build_where_clauses(intent, target_category_id)
-        where_sql = "WHERE " + " AND ".join(where_clauses)
-
-        # Lấy gấp bội để giai đoạn 2 có đủ ứng viên sau khi lọc excluded
-        candidate_limit = top_k * _CANDIDATE_MULTIPLIER
-        params.update({"vector": str(query_vector), "limit": candidate_limit})
-
-        sql = text(f"""
-            SELECT
-                pe.product_id,
-                CONCAT(pe.content, ' ', COALESCE(attrs.in_stock_attributes, '')) AS content,
-                (pe.embedding <=> CAST(:vector AS vector)) AS distance
-            FROM product_embeddings pe
-            JOIN products p  ON p.id  = pe.product_id
-            LEFT JOIN brands b ON p.brand_id = b.id
-            LEFT JOIN LATERAL (
-                SELECT string_agg(DISTINCT a.name || ': ' || av.value, ' ' ORDER BY a.name || ': ' || av.value) AS in_stock_attributes
-                FROM product_skus sk
-                JOIN sku_values sv ON sv.product_sku_id = sk.id
-                JOIN attribute_values av ON av.id = sv.attribute_value_id
-                JOIN attributes a ON a.id = av.attribute_id
-                WHERE sk.product_id = p.id
-                  AND sk.is_active = TRUE
-                  AND sk.stock_quantity > 0
-            ) attrs ON TRUE
-            {where_sql}
-            ORDER BY distance ASC
-            LIMIT :limit
-        """)
-
-        rows = session.execute(sql, params).mappings().all()
+        candidate_limit = max(top_k * _CANDIDATE_MULTIPLIER, _MIN_CANDIDATES)
+        vector_rows = []
+        try:
+            query_vector = embed_query(enhanced_query)
+            vector_rows = _find_vector_candidates(session, query_vector, intent, target_category_id, candidate_limit)
+        except Exception as embed_error:
+            logger.warning("Vector search skipped, falling back to lexical search: %s", embed_error)
+        lexical_rows = _find_lexical_candidates(session, intent, target_category_id, candidate_limit)
+        rows = _merge_candidates(vector_rows, lexical_rows)
+        if not rows:
+            rows = _find_broad_candidates(session, intent, target_category_id, candidate_limit)
+        if not rows and target_category_id is None and intent.get("category_id") is not None:
+            relaxed_intent = dict(intent)
+            relaxed_intent["category_id"] = None
+            logger.info("Retrying search without inferred category filter for query='%s'", query_text)
+            relaxed_lexical = _find_lexical_candidates(session, relaxed_intent, None, candidate_limit)
+            relaxed_broad = _find_broad_candidates(session, relaxed_intent, None, candidate_limit)
+            rows = _merge_candidates(relaxed_lexical, relaxed_broad)
 
         # ── Giai đoạn 2: Rerank + lọc excluded ─────────────────────────
         product_ids = _rerank(list(rows), intent, top_k, user_id=user_id, session=session)
 
         logger.info(
             f"✅ Query='{query_text}' | Intent={intent} | "
-            f"Candidates={len(rows)} → Final={len(product_ids)}"
+            f"Vector={len(vector_rows)} Lexical={len(lexical_rows)} Candidates={len(rows)} → Final={len(product_ids)}"
         )
         return product_ids
 

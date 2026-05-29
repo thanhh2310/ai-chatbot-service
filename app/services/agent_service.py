@@ -145,7 +145,8 @@ def _fetch_product_details(product_ids: list[int]) -> list[dict]:
                     AND sk.stock_quantity > 0
               )
         """), {"pids": product_ids}).mappings().all()
-        return [dict(r) for r in rows]
+        by_id = {r["id"]: dict(r) for r in rows}
+        return [by_id[pid] for pid in product_ids if pid in by_id]
 
 
 def _format_products(products: list[dict]) -> str:
@@ -254,9 +255,13 @@ def _exec_chat(arguments: dict, user_message: str) -> tuple[str, list[dict], str
                   )
             """), {"pids": retrieved_ids}).mappings().all()
             context_parts = []
-            retrieved_ids = []
-            for r in rows:
-                retrieved_ids.append(r["id"])
+            rows_by_id = {r["id"]: r for r in rows}
+            filtered_ids = []
+            for pid in retrieved_ids:
+                r = rows_by_id.get(pid)
+                if not r:
+                    continue
+                filtered_ids.append(r["id"])
                 link = f"[{r['name']}](http://localhost:8080/api/products/{r['id']})"
                 img = f"![{r['name']}]({r['thumbnail_url']})" if r.get('thumbnail_url') else ""
                 context_parts.append(
@@ -264,6 +269,7 @@ def _exec_chat(arguments: dict, user_message: str) -> tuple[str, list[dict], str
                     f"Thuộc tính còn hàng: {r['in_stock_attributes'] or 'chưa có'} | "
                     f"Mô tả: {r['description']}"
                 )
+            retrieved_ids = filtered_ids
             context_text = "\n".join(context_parts)
         else:
             context_text = "Không có sản phẩm phù hợp."

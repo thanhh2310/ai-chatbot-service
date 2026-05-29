@@ -11,9 +11,6 @@ logger = logging.getLogger(__name__)
 _client = Together(api_key=Config.TOGETHER_API_KEY)
 _MODEL = "meta-llama/Llama-3.3-70B-Instruct-Turbo"
 
-# =====================================================================
-# SCHEMA MỞ RỘNG — Thêm color_preference và price_tier
-# =====================================================================
 class QueryIntent(BaseModel):
     search_keywords: str = Field(
         description=(
@@ -75,13 +72,16 @@ class QueryIntent(BaseModel):
 
 # Prompt cải tiến: thêm few-shot examples để giảm hallucination
 _PROMPT_TEMPLATE = """
-Bạn là AI trích xuất ý định mua đồ thể thao. Phân tích câu hỏi và trả về JSON.
+Bạn là AI trích xuất ý định mua hàng cho website thương mại điện tử. Phân tích câu hỏi và trả về JSON.
 
 Quy tắc quan trọng:
 - "đôi" → category_id = 1 (Giày)
+- Chỉ điền category_id khi câu hỏi thể hiện rõ danh mục; nếu không chắc, để null để hệ thống tìm theo ngữ nghĩa và thuộc tính.
 - "không lấy X", "trừ màu X", "đừng X" → thêm X vào excluded_keywords, KHÔNG vào search_keywords
 - Nếu có màu sắc TÍCH CỰC (muốn mua) → điền color_preference
 - Ước tính price_tier từ max_budget nếu không nói rõ
+- Giữ lại các thuộc tính như size, màu, chất liệu, form dáng, mục đích sử dụng trong search_keywords.
+- Nếu người dùng hỏi ngành hàng không thuộc giày/quần áo/phụ kiện, để category_id = null và mô tả đúng nhu cầu trong search_keywords.
 
 Ví dụ:
 Input: "giày Nike chạy bộ nam 1 triệu không lấy màu đen"

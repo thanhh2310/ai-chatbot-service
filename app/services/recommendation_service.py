@@ -47,7 +47,9 @@ def get_recommendations_for_user(user_id: int, limit: int = 6) -> list[int]:
             centroid = _compute_weighted_centroid(seed_scores, seed_ids, seed_vectors)
 
             # ── 6. Tìm ứng viên và rerank bằng hành vi + review + profile ─────
-            candidates = _find_hybrid_candidates(conn, centroid, exclude_ids, _MAX_CANDIDATES)
+            vector_candidates = _find_hybrid_candidates(conn, centroid, exclude_ids, _MAX_CANDIDATES)
+            behavior_candidates = _find_behavior_candidates(conn, user_id, exclude_ids, _MAX_CANDIDATES, brand_reliable)
+            candidates = _merge_candidates(vector_candidates, behavior_candidates)
             reranked = _rerank_candidates(conn, user_id, candidates, seed_scores, user_profile, limit, brand_reliable)
 
             logger.info(f"✅ Recommendations user={user_id}: {[pid for pid, _ in reranked]}")
@@ -274,6 +276,114 @@ def _find_hybrid_candidates(conn, centroid: str, exclude_ids: set[int], top_k: i
     return [dict(r) for r in rows]
 
 
+def _find_behavior_candidates(
+    conn,
+    user_id: int,
+    exclude_ids: set[int],
+    top_k: int,
+    brand_reliable: bool,
+) -> list[dict]:
+    if not exclude_ids:
+        exclude_ids = {-1}
+
+    brand_join = "OR (fav.brand_id IS NOT NULL AND p.brand_id = fav.brand_id)" if brand_reliable else ""
+    rows = conn.execute(text(f"""
+        WITH fav AS (
+            SELECT
+                p.category_id,
+                p.brand_id,
+                SUM(signal_weight) AS score
+            FROM (
+                SELECT ui.product_id,
+                       CASE ui.interaction_type
+                           WHEN 'PURCHASE' THEN 5.0
+                           WHEN 'ADD_TO_CART' THEN 3.0
+                           WHEN 'VIEW' THEN 1.0
+                           WHEN 'SEARCH' THEN 0.5
+                           ELSE COALESCE(ui.interaction_weight, 1.0)
+                       END * EXP(-EXTRACT(EPOCH FROM (NOW() - ui.created_at)) / (86400.0 * 45.0)) AS signal_weight
+                FROM user_interactions ui
+                WHERE ui.user_id = :uid AND ui.product_id IS NOT NULL
+
+                UNION ALL
+
+                SELECT w.product_id, 2.5 * EXP(-EXTRACT(EPOCH FROM (NOW() - w.created_at)) / (86400.0 * 45.0))
+                FROM wishlists w
+                WHERE w.user_id = :uid
+            ) s
+            JOIN products p ON p.id = s.product_id
+            GROUP BY p.category_id, p.brand_id
+            ORDER BY SUM(signal_weight) DESC
+            LIMIT 6
+        ),
+        product_popularity AS (
+            SELECT
+                ps.product_id,
+                COALESCE(SUM(oi.quantity), 0)::float
+                + COUNT(ui.id) FILTER (WHERE ui.interaction_type = 'ADD_TO_CART')::float * 0.8
+                + COUNT(ui.id) FILTER (WHERE ui.interaction_type = 'VIEW')::float * 0.2 AS popularity
+            FROM product_skus ps
+            LEFT JOIN order_items oi ON oi.product_sku_id = ps.id
+            LEFT JOIN orders o ON o.id = oi.order_id AND o.order_status != 'CANCELLED'
+            LEFT JOIN user_interactions ui ON ui.product_id = ps.product_id
+            GROUP BY ps.product_id
+        )
+        SELECT
+            p.id AS product_id,
+            1.0::float AS distance,
+            CONCAT_WS(' ', p.name, p.description, c.name, b.name, attrs.in_stock_attributes) AS content,
+            COALESCE(MAX(pp.popularity), 0) + MAX(fav.score) AS behavior_candidate_score
+        FROM fav
+        JOIN products p ON p.category_id = fav.category_id {brand_join}
+        LEFT JOIN categories c ON c.id = p.category_id
+        LEFT JOIN brands b ON b.id = p.brand_id
+        LEFT JOIN product_embeddings pe ON pe.product_id = p.id
+        LEFT JOIN product_popularity pp ON pp.product_id = p.id
+        LEFT JOIN LATERAL (
+            SELECT string_agg(DISTINCT a.name || ': ' || av.value, ' ' ORDER BY a.name || ': ' || av.value) AS in_stock_attributes
+            FROM product_skus sk
+            JOIN sku_values sv ON sv.product_sku_id = sk.id
+            JOIN attribute_values av ON av.id = sv.attribute_value_id
+            JOIN attributes a ON a.id = av.attribute_id
+            WHERE sk.product_id = p.id
+              AND sk.is_active = TRUE
+              AND sk.stock_quantity > 0
+        ) attrs ON TRUE
+        WHERE p.is_active = TRUE
+          AND p.id != ALL(:exclude_ids)
+          AND EXISTS (
+              SELECT 1
+              FROM product_skus sk
+              WHERE sk.product_id = p.id
+                AND sk.is_active = TRUE
+                AND sk.stock_quantity > 0
+          )
+        GROUP BY p.id, p.name, p.description, c.name, b.name, attrs.in_stock_attributes
+        ORDER BY behavior_candidate_score DESC
+        LIMIT :top_k
+    """), {"uid": user_id, "exclude_ids": list(exclude_ids), "top_k": top_k}).mappings().all()
+    return [dict(r) for r in rows]
+
+
+def _merge_candidates(*candidate_lists: list[dict]) -> list[dict]:
+    merged: dict[int, dict] = {}
+    for candidates in candidate_lists:
+        for row in candidates:
+            pid = row["product_id"]
+            existing = merged.get(pid)
+            if not existing:
+                merged[pid] = dict(row)
+                continue
+            existing["distance"] = min(float(existing.get("distance", 1.0)), float(row.get("distance", 1.0)))
+            existing["behavior_candidate_score"] = max(
+                float(existing.get("behavior_candidate_score", 0.0)),
+                float(row.get("behavior_candidate_score", 0.0)),
+            )
+            if len(row.get("content") or "") > len(existing.get("content") or ""):
+                existing["content"] = row.get("content")
+    return list(merged.values())
+
+
 def _rerank_candidates(
     conn,
     user_id: int,
@@ -290,6 +400,7 @@ def _rerank_candidates(
     stats = _get_candidate_stats(conn, user_id, product_ids)
     max_seed = max(seed_scores.values()) if seed_scores else 1.0
     max_pop = max((s["popularity"] for s in stats.values()), default=1.0) or 1.0
+    max_behavior_candidate = max((float(r.get("behavior_candidate_score", 0.0)) for r in candidates), default=1.0) or 1.0
 
     scored = []
     for row in candidates:
@@ -301,25 +412,28 @@ def _rerank_candidates(
         review_score = _normalize_rating(s.get("avg_rating"))
         recency_score = _normalize_recency(s.get("last_event_at"))
         body_fit_score = _body_fit_score(row.get("content") or "", user_profile, s.get("category_name"))
+        behavior_candidate_score = min(float(row.get("behavior_candidate_score", 0.0)) / max_behavior_candidate, 1.0)
         penalty = float(s.get("negative_penalty", 0.0))
 
         if brand_reliable:
             final_score = (
-                0.36 * vector_score
+                0.32 * vector_score
                 + 0.20 * behavior_score
+                + 0.08 * behavior_candidate_score
                 + 0.14 * review_score
                 + 0.10 * recency_score
-                + 0.08 * popularity_score
+                + 0.04 * popularity_score
                 + 0.12 * body_fit_score
                 - penalty
             )
         else:
             final_score = (
-                0.28 * vector_score
+                0.18 * vector_score
                 + 0.24 * behavior_score
+                + 0.14 * behavior_candidate_score
                 + 0.16 * review_score
                 + 0.12 * recency_score
-                + 0.08 * popularity_score
+                + 0.04 * popularity_score
                 + 0.12 * body_fit_score
                 - penalty
             )

@@ -177,7 +177,11 @@ def _retrieve_context(conn, message: str, user_id: int | None = None) -> tuple[s
 
     context_parts = []
     available_ids = []
-    for r in rows:
+    rows_by_id = {r["id"]: r for r in rows}
+    for pid in retrieved_ids:
+        r = rows_by_id.get(pid)
+        if not r:
+            continue
         available_ids.append(r["id"])
         context_parts.append(
             f"- ID {r['id']}: {r['name']} | Giá: {r['base_price']} | "
