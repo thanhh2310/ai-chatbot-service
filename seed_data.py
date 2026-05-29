@@ -1,14 +1,12 @@
 import os
 import time
 from sqlalchemy import create_engine, text
-from together import Together
 from dotenv import load_dotenv
+from app.services.embedding_service import embed_long_texts
 
 load_dotenv()
 DB_URL       = os.getenv("DATABASE_URL")
-TOGETHER_KEY = os.getenv("TOGETHER_API_KEY")
 
-_MODEL = "intfloat/multilingual-e5-large-instruct"
 # Số sản phẩm gửi embed 1 lần — Together AI cho phép batch lớn
 _BATCH_SIZE = 20
 
@@ -60,7 +58,6 @@ def _build_content(row: dict) -> str:
 def seed_database():
     print("🚀 Bắt đầu Vectorization với Together AI (multilingual-e5-large-instruct)...")
 
-    client = Together(api_key=TOGETHER_KEY)
     engine = create_engine(DB_URL)
 
     with engine.connect() as conn:
@@ -118,10 +115,9 @@ def seed_database():
             batch = rows[batch_start: batch_start + _BATCH_SIZE]
             contents = [_build_content(dict(row)) for row in batch]
 
-            # Gọi batch embed 1 lần cho cả batch — nhanh hơn gọi từng cái
-            response = client.embeddings.create(model=_MODEL, input=contents)
-            sorted_data = sorted(response.data, key=lambda x: x.index)
-            vectors = [item.embedding for item in sorted_data]
+            # Text chunking: product content dài sẽ được chia nhỏ dưới limit 512 tokens,
+            # embed từng chunk rồi gộp về một vector/product.
+            vectors = embed_long_texts(contents, batch_size=_BATCH_SIZE)
 
             for row, content, vector in zip(batch, contents, vectors):
                 conn.execute(

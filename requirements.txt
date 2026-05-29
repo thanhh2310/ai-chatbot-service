@@ -107,3 +107,4 @@ Werkzeug==3.1.8
 xxhash==3.6.0
 yarl==1.23.0
 zstandard==0.25.0
+flask-cors

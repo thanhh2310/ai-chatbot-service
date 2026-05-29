@@ -200,8 +200,17 @@ def _build_personalization_context(conn, user_id: int | None) -> str:
     """), {"uid": user_id}).mappings().first()
 
     rows = conn.execute(text("""
-        WITH signals AS (
-            SELECT p.category_id, p.brand_id, c.name AS category_name, b.name AS brand_name,
+        WITH brand_catalog AS (
+            SELECT COUNT(DISTINCT brand_id) FILTER (WHERE brand_id IS NOT NULL) > 1 AS brand_reliable
+            FROM products
+            WHERE is_active = TRUE
+        ),
+        signals AS (
+            SELECT
+                   p.category_id,
+                   CASE WHEN bc.brand_reliable THEN p.brand_id ELSE NULL END AS brand_id,
+                   c.name AS category_name,
+                   CASE WHEN bc.brand_reliable THEN b.name ELSE NULL END AS brand_name,
                    SUM(CASE ui.interaction_type
                        WHEN 'PURCHASE' THEN 5.0
                        WHEN 'ADD_TO_CART' THEN 3.0
@@ -211,31 +220,43 @@ def _build_personalization_context(conn, user_id: int | None) -> str:
                    END * EXP(-EXTRACT(EPOCH FROM (NOW() - ui.created_at)) / (86400.0 * 45.0))) AS score
             FROM user_interactions ui
             JOIN products p ON p.id = ui.product_id
+            CROSS JOIN brand_catalog bc
             LEFT JOIN categories c ON c.id = p.category_id
             LEFT JOIN brands b ON b.id = p.brand_id
             WHERE ui.user_id = :uid AND ui.product_id IS NOT NULL
-            GROUP BY p.category_id, p.brand_id, c.name, b.name
+            GROUP BY p.category_id, CASE WHEN bc.brand_reliable THEN p.brand_id ELSE NULL END, c.name, CASE WHEN bc.brand_reliable THEN b.name ELSE NULL END
 
             UNION ALL
 
-            SELECT p.category_id, p.brand_id, c.name, b.name, COUNT(*) * 2.5 AS score
+            SELECT
+                   p.category_id,
+                   CASE WHEN bc.brand_reliable THEN p.brand_id ELSE NULL END,
+                   c.name,
+                   CASE WHEN bc.brand_reliable THEN b.name ELSE NULL END,
+                   COUNT(*) * 2.5 AS score
             FROM wishlists w
             JOIN products p ON p.id = w.product_id
+            CROSS JOIN brand_catalog bc
             LEFT JOIN categories c ON c.id = p.category_id
             LEFT JOIN brands b ON b.id = p.brand_id
             WHERE w.user_id = :uid
-            GROUP BY p.category_id, p.brand_id, c.name, b.name
+            GROUP BY p.category_id, CASE WHEN bc.brand_reliable THEN p.brand_id ELSE NULL END, c.name, CASE WHEN bc.brand_reliable THEN b.name ELSE NULL END
 
             UNION ALL
 
-            SELECT p.category_id, p.brand_id, c.name, b.name,
+            SELECT
+                   p.category_id,
+                   CASE WHEN bc.brand_reliable THEN p.brand_id ELSE NULL END,
+                   c.name,
+                   CASE WHEN bc.brand_reliable THEN b.name ELSE NULL END,
                    SUM(CASE WHEN r.rating >= 4 THEN 2.0 WHEN r.rating <= 2 THEN -2.0 ELSE 0.2 END) AS score
             FROM reviews r
             JOIN products p ON p.id = r.product_id
+            CROSS JOIN brand_catalog bc
             LEFT JOIN categories c ON c.id = p.category_id
             LEFT JOIN brands b ON b.id = p.brand_id
             WHERE r.user_id = :uid
-            GROUP BY p.category_id, p.brand_id, c.name, b.name
+            GROUP BY p.category_id, CASE WHEN bc.brand_reliable THEN p.brand_id ELSE NULL END, c.name, CASE WHEN bc.brand_reliable THEN b.name ELSE NULL END
         )
         SELECT category_name, brand_name, SUM(score) AS score
         FROM signals
@@ -265,7 +286,11 @@ def _build_personalization_context(conn, user_id: int | None) -> str:
         if height or weight:
             parts.append(f"Chỉ số cơ thể: cao {height or 'chưa có'} cm, nặng {weight or 'chưa có'} kg. Khi tư vấn quần áo, dùng thông tin này để gợi ý size/fit một cách thận trọng.")
     if rows:
-        favs = [f"{r['category_name'] or 'danh mục khác'} / {r['brand_name'] or 'brand khác'}" for r in rows]
+        favs = [
+            f"{r['category_name'] or 'danh mục khác'} / {r['brand_name']}"
+            if r["brand_name"] else (r["category_name"] or "danh mục khác")
+            for r in rows
+        ]
         parts.append("Sở thích suy ra từ hành vi gần đây: " + "; ".join(favs))
     if bad_rows:
         parts.append("Nên tránh hoặc giảm ưu tiên sản phẩm từng hủy/hoàn/trả: " + ", ".join(bad_rows))

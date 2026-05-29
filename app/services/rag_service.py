@@ -13,6 +13,15 @@ _BUDGET_TOLERANCE = 1.15
 # Số ứng viên lấy ở giai đoạn 1 (luôn gấp bội top_k để có đủ để rerank)
 _CANDIDATE_MULTIPLIER = 4
 
+_BRAND_ALIASES = {
+    "nike": ["nike", "nai"],
+    "adidas": ["adidas", "das"],
+    "under armour": ["under armour", "ua"],
+    "puma": ["puma"],
+    "li-ning": ["li-ning", "lining"],
+    "new balance": ["new balance", "nb"],
+}
+
 
 def _build_enhanced_query(intent: dict) -> str:
     """
@@ -39,6 +48,47 @@ def _build_enhanced_query(intent: dict) -> str:
         parts.append(tier_map.get(tier, ""))
 
     return " ".join(filter(None, parts))
+
+
+def _prepare_intent_for_catalog(session, intent: dict) -> dict:
+    prepared = dict(intent)
+    brand = prepared.get("brand_name")
+    if brand and not _brand_filter_applicable(session, brand):
+        prepared["brand_name"] = None
+        prepared["search_keywords"] = _strip_brand_terms(prepared.get("search_keywords") or "", brand)
+        logger.info("Brand filter ignored because catalog brand data is missing, sparse, or single-brand: %s", brand)
+    return prepared
+
+
+def _brand_filter_applicable(session, brand: str | None) -> bool:
+    if not brand:
+        return False
+    row = session.execute(text("""
+        SELECT
+            COUNT(DISTINCT b.id) FILTER (WHERE b.id IS NOT NULL) AS brand_count,
+            COUNT(*) FILTER (WHERE b.name ILIKE :brand) AS matching_products
+        FROM products p
+        LEFT JOIN brands b ON b.id = p.brand_id
+        WHERE p.is_active = TRUE
+          AND EXISTS (
+              SELECT 1
+              FROM product_skus sk
+              WHERE sk.product_id = p.id
+                AND sk.is_active = TRUE
+                AND sk.stock_quantity > 0
+          )
+    """), {"brand": f"%{brand}%"}).mappings().first()
+    if not row:
+        return False
+    return int(row["brand_count"] or 0) > 1 and int(row["matching_products"] or 0) > 0
+
+
+def _strip_brand_terms(query: str, brand: str) -> str:
+    terms = _BRAND_ALIASES.get(brand.lower(), [brand])
+    clean = query
+    for term in terms:
+        clean = re.sub(rf'(?:^|\s|\W|_){re.escape(term)}(?:$|\s|\W|_)', ' ', clean, flags=re.IGNORECASE | re.UNICODE)
+    return re.sub(r"\s+", " ", clean).strip()
 
 
 def _build_where_clauses(intent: dict, target_category_id) -> tuple[list[str], dict]:
@@ -150,6 +200,7 @@ def search_similar_products(
     try:
         # ── Giai đoạn 0: Phân tích ý định ──────────────────────────────
         intent = analyze_query(query_text)
+        intent = _prepare_intent_for_catalog(session, intent)
 
         # ── Giai đoạn 1: Vector search — lấy nhiều ứng viên (top_k * 4) ─
         enhanced_query = _build_enhanced_query(intent)
@@ -207,7 +258,12 @@ def _get_personal_features(session, user_id: int, product_ids: list[int]) -> dic
     if not product_ids:
         return {}
     rows = session.execute(text("""
-        WITH user_profile AS (
+        WITH brand_catalog AS (
+            SELECT COUNT(DISTINCT brand_id) FILTER (WHERE brand_id IS NOT NULL) > 1 AS brand_reliable
+            FROM products
+            WHERE is_active = TRUE
+        ),
+        user_profile AS (
             SELECT height, weight
             FROM users
             WHERE id = :uid
@@ -239,7 +295,9 @@ def _get_personal_features(session, user_id: int, product_ids: list[int]) -> dic
                 END * EXP(-EXTRACT(EPOCH FROM (NOW() - ui.created_at)) / (86400.0 * 45.0))) AS score
             FROM user_interactions ui
             JOIN products p1 ON p1.id = ui.product_id
-            JOIN products p2 ON p2.category_id = p1.category_id OR p2.brand_id = p1.brand_id
+            CROSS JOIN brand_catalog bc
+            JOIN products p2 ON p2.category_id = p1.category_id
+                OR (bc.brand_reliable AND p1.brand_id IS NOT NULL AND p2.brand_id = p1.brand_id)
             WHERE ui.user_id = :uid
               AND ui.product_id IS NOT NULL
               AND p2.id = ANY(:pids)
@@ -249,7 +307,9 @@ def _get_personal_features(session, user_id: int, product_ids: list[int]) -> dic
             SELECT p2.id AS product_id, COUNT(*) * 2.5 AS score
             FROM wishlists w
             JOIN products p1 ON p1.id = w.product_id
-            JOIN products p2 ON p2.category_id = p1.category_id OR p2.brand_id = p1.brand_id
+            CROSS JOIN brand_catalog bc
+            JOIN products p2 ON p2.category_id = p1.category_id
+                OR (bc.brand_reliable AND p1.brand_id IS NOT NULL AND p2.brand_id = p1.brand_id)
             WHERE w.user_id = :uid AND p2.id = ANY(:pids)
             GROUP BY p2.id
         ),
@@ -259,7 +319,9 @@ def _get_personal_features(session, user_id: int, product_ids: list[int]) -> dic
                 AVG(r.rating)::float AS user_related_rating
             FROM reviews r
             JOIN products p1 ON p1.id = r.product_id
-            JOIN products p2 ON p2.category_id = p1.category_id OR p2.brand_id = p1.brand_id
+            CROSS JOIN brand_catalog bc
+            JOIN products p2 ON p2.category_id = p1.category_id
+                OR (bc.brand_reliable AND p1.brand_id IS NOT NULL AND p2.brand_id = p1.brand_id)
             WHERE r.user_id = :uid AND p2.id = ANY(:pids)
             GROUP BY p2.id
         ),

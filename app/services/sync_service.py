@@ -3,7 +3,7 @@ import time
 import logging
 from app.services.db_service import db
 from sqlalchemy import text
-from app.services.embedding_service import embed_query, embed_batch
+from app.services.embedding_service import embed_long_texts
 
 logger = logging.getLogger(__name__)
 
@@ -74,13 +74,9 @@ def sync_new_products():
         
         contents = [_build_content(dict(row)) for row in rows]
         
-        # Together AI hỗ trợ batch embed — nhanh hơn và ít tốn API call hơn
-        # Xử lý theo batch nhỏ để tránh payload quá lớn
-        vectors = []
-        for i in range(0, len(contents), _BATCH_SIZE):
-            batch = contents[i:i + _BATCH_SIZE]
-            batch_vectors = embed_batch(batch)
-            vectors.extend(batch_vectors)
+        # Text chunking: mỗi product content có thể vượt 512 tokens của embedding model.
+        # embed_long_texts sẽ chunk, embed từng chunk, rồi gộp thành 1 vector/product.
+        vectors = embed_long_texts(contents, batch_size=_BATCH_SIZE)
         
         for row, content, vector in zip(rows, contents, vectors):
             session.execute(text("""

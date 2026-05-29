@@ -30,6 +30,7 @@ def get_recommendations_for_user(user_id: int, limit: int = 6) -> list[int]:
 
             # ── 2. Hồ sơ user + seed products đa tín hiệu ─────────────────────
             user_profile = _get_user_profile(conn, user_id)
+            brand_reliable = _is_brand_reliable(conn)
             seed_scores = _get_seed_scores(conn, user_id)
             seed_ids = list(seed_scores.keys())
 
@@ -47,7 +48,7 @@ def get_recommendations_for_user(user_id: int, limit: int = 6) -> list[int]:
 
             # ── 6. Tìm ứng viên và rerank bằng hành vi + review + profile ─────
             candidates = _find_hybrid_candidates(conn, centroid, exclude_ids, _MAX_CANDIDATES)
-            reranked = _rerank_candidates(conn, user_id, candidates, seed_scores, user_profile, limit)
+            reranked = _rerank_candidates(conn, user_id, candidates, seed_scores, user_profile, limit, brand_reliable)
 
             logger.info(f"✅ Recommendations user={user_id}: {[pid for pid, _ in reranked]}")
             return [pid for pid, _ in reranked]
@@ -88,6 +89,22 @@ def _get_user_profile(conn, user_id: int) -> dict:
         "bmi": _compute_bmi(height, weight),
         "likely_sizes": _estimate_clothing_sizes(height, weight),
     }
+
+
+def _is_brand_reliable(conn) -> bool:
+    count = conn.execute(text("""
+        SELECT COUNT(DISTINCT brand_id) FILTER (WHERE brand_id IS NOT NULL)
+        FROM products
+        WHERE is_active = TRUE
+          AND EXISTS (
+              SELECT 1
+              FROM product_skus sk
+              WHERE sk.product_id = products.id
+                AND sk.is_active = TRUE
+                AND sk.stock_quantity > 0
+          )
+    """)).scalar()
+    return int(count or 0) > 1
 
 
 def _get_seed_scores(conn, user_id: int) -> dict[int, float]:
@@ -264,6 +281,7 @@ def _rerank_candidates(
     seed_scores: dict[int, float],
     user_profile: dict,
     limit: int,
+    brand_reliable: bool = True,
 ) -> list[tuple[int, float]]:
     if not candidates:
         return []
@@ -285,15 +303,26 @@ def _rerank_candidates(
         body_fit_score = _body_fit_score(row.get("content") or "", user_profile, s.get("category_name"))
         penalty = float(s.get("negative_penalty", 0.0))
 
-        final_score = (
-            0.36 * vector_score
-            + 0.20 * behavior_score
-            + 0.14 * review_score
-            + 0.10 * recency_score
-            + 0.08 * popularity_score
-            + 0.12 * body_fit_score
-            - penalty
-        )
+        if brand_reliable:
+            final_score = (
+                0.36 * vector_score
+                + 0.20 * behavior_score
+                + 0.14 * review_score
+                + 0.10 * recency_score
+                + 0.08 * popularity_score
+                + 0.12 * body_fit_score
+                - penalty
+            )
+        else:
+            final_score = (
+                0.28 * vector_score
+                + 0.24 * behavior_score
+                + 0.16 * review_score
+                + 0.12 * recency_score
+                + 0.08 * popularity_score
+                + 0.12 * body_fit_score
+                - penalty
+            )
         scored.append((pid, final_score))
 
     scored.sort(key=lambda item: item[1], reverse=True)
