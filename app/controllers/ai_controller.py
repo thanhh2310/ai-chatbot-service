@@ -222,9 +222,9 @@ def unified_ask():
     if err:
         return err
 
-    message = (data.get("message") or "").strip()
+    message = (data.get("message") or data.get("query") or "").strip()
     if not message:
-        return _err("Trường 'message' không được để trống.")
+        return _err("Trường 'message' hoặc 'query' không được để trống.")
 
     session_id = data.get("session_id") or None
     user_id = data.get("user_id")

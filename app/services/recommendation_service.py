@@ -139,6 +139,17 @@ def _get_seed_scores(conn, user_id: int) -> dict[int, float]:
             UNION ALL
 
             SELECT
+                ps.product_id,
+                3.2 * GREATEST(1, ci.quantity) AS base_weight,
+                ci.created_at
+            FROM carts c
+            JOIN cart_items ci ON ci.cart_id = c.id
+            JOIN product_skus ps ON ps.id = ci.product_sku_id
+            WHERE c.user_id = :uid
+
+            UNION ALL
+
+            SELECT
                 ui.product_id,
                 CASE ui.interaction_type
                     WHEN 'PURCHASE' THEN 5.0
@@ -179,6 +190,34 @@ def _get_seed_scores(conn, user_id: int) -> dict[int, float]:
             JOIN order_items oi ON oi.order_id = o.id
             JOIN product_skus ps ON ps.id = oi.product_sku_id
             WHERE o.user_id = :uid
+
+            UNION ALL
+
+            SELECT
+                ps.product_id,
+                CASE
+                    WHEN ors.status IN ('PENDING', 'APPROVED') THEN -4.0
+                    WHEN ors.status = 'REJECTED' THEN -0.5
+                    ELSE -2.0
+                END AS base_weight,
+                COALESCE(ors.updated_at, ors.created_at)
+            FROM order_returns ors
+            JOIN orders o ON o.id = ors.order_id
+            JOIN order_items oi ON oi.order_id = o.id
+            JOIN product_skus ps ON ps.id = oi.product_sku_id
+            WHERE ors.user_id = :uid
+
+            UNION ALL
+
+            SELECT
+                CAST(TRIM(pid) AS INTEGER) AS product_id,
+                1.1 AS base_weight,
+                cm.created_at
+            FROM chatbot_sessions cs
+            JOIN chatbot_messages cm ON cm.session_id = cs.id
+            CROSS JOIN LATERAL regexp_split_to_table(COALESCE(cm.retrieved_product_ids, ''), ',') AS pid
+            WHERE cs.user_id = :uid
+              AND TRIM(pid) ~ '^[0-9]+$'
         )
         SELECT
             product_id,
@@ -310,6 +349,24 @@ def _find_behavior_candidates(
                 SELECT w.product_id, 2.5 * EXP(-EXTRACT(EPOCH FROM (NOW() - w.created_at)) / (86400.0 * 45.0))
                 FROM wishlists w
                 WHERE w.user_id = :uid
+
+                UNION ALL
+
+                SELECT ps.product_id, 3.2 * GREATEST(1, ci.quantity) * EXP(-EXTRACT(EPOCH FROM (NOW() - ci.created_at)) / (86400.0 * 45.0))
+                FROM carts c
+                JOIN cart_items ci ON ci.cart_id = c.id
+                JOIN product_skus ps ON ps.id = ci.product_sku_id
+                WHERE c.user_id = :uid
+
+                UNION ALL
+
+                SELECT CAST(TRIM(pid) AS INTEGER) AS product_id,
+                       1.1 * EXP(-EXTRACT(EPOCH FROM (NOW() - cm.created_at)) / (86400.0 * 45.0))
+                FROM chatbot_sessions cs
+                JOIN chatbot_messages cm ON cm.session_id = cs.id
+                CROSS JOIN LATERAL regexp_split_to_table(COALESCE(cm.retrieved_product_ids, ''), ',') AS pid
+                WHERE cs.user_id = :uid
+                  AND TRIM(pid) ~ '^[0-9]+$'
             ) s
             JOIN products p ON p.id = s.product_id
             GROUP BY p.category_id, p.brand_id
@@ -472,6 +529,29 @@ def _get_candidate_stats(conn, user_id: int, product_ids: list[int]) -> dict[int
             WHERE product_id = ANY(:pids)
             GROUP BY product_id
         ),
+        cart_stats AS (
+            SELECT
+                ps.product_id,
+                SUM(ci.quantity)::float AS cart_qty,
+                MAX(ci.created_at) AS last_cart_at
+            FROM carts c
+            JOIN cart_items ci ON ci.cart_id = c.id
+            JOIN product_skus ps ON ps.id = ci.product_sku_id
+            WHERE c.user_id = :uid AND ps.product_id = ANY(:pids)
+            GROUP BY ps.product_id
+        ),
+        chat_stats AS (
+            SELECT
+                CAST(TRIM(pid) AS INTEGER) AS product_id,
+                COUNT(*)::float AS chat_hits,
+                MAX(cm.created_at) AS last_chat_at
+            FROM chatbot_sessions cs
+            JOIN chatbot_messages cm ON cm.session_id = cs.id
+            CROSS JOIN LATERAL regexp_split_to_table(COALESCE(cm.retrieved_product_ids, ''), ',') AS pid
+            WHERE cs.user_id = :uid
+              AND TRIM(pid) ~ '^[0-9]+$'
+            GROUP BY CAST(TRIM(pid) AS INTEGER)
+        ),
         review_stats AS (
             SELECT
                 product_id,
@@ -492,19 +572,36 @@ def _get_candidate_stats(conn, user_id: int, product_ids: list[int]) -> dict[int
             JOIN product_skus ps ON ps.id = oi.product_sku_id
             WHERE o.user_id = :uid AND ps.product_id = ANY(:pids)
             GROUP BY ps.product_id
+        ),
+        return_negative AS (
+            SELECT
+                ps.product_id,
+                COUNT(*) FILTER (WHERE ors.status IN ('PENDING', 'APPROVED'))::float AS return_penalty
+            FROM order_returns ors
+            JOIN orders o ON o.id = ors.order_id
+            JOIN order_items oi ON oi.order_id = o.id
+            JOIN product_skus ps ON ps.id = oi.product_sku_id
+            WHERE ors.user_id = :uid AND ps.product_id = ANY(:pids)
+            GROUP BY ps.product_id
         )
         SELECT
             p.id AS product_id,
             c.name AS category_name,
-            COALESCE(os.purchase_qty, 0) + COALESCE(ist.interaction_score, 0) AS popularity,
+            COALESCE(os.purchase_qty, 0)
+                + COALESCE(ist.interaction_score, 0)
+                + COALESCE(cs.cart_qty, 0) * 1.2
+                + COALESCE(chs.chat_hits, 0) * 0.5 AS popularity,
             GREATEST(
                 COALESCE(os.last_order_at, TIMESTAMP '1970-01-01'),
-                COALESCE(ist.last_interaction_at, TIMESTAMP '1970-01-01')
+                COALESCE(ist.last_interaction_at, TIMESTAMP '1970-01-01'),
+                COALESCE(cs.last_cart_at, TIMESTAMP '1970-01-01'),
+                COALESCE(chs.last_chat_at, TIMESTAMP '1970-01-01')
             ) AS last_event_at,
             rs.avg_rating,
             LEAST(
                 0.45,
                 COALESCE(un.status_penalty, 0) * 0.18
+                + COALESCE(rn.return_penalty, 0) * 0.25
                 + COALESCE(os.bad_orders, 0) * 0.08
                 + COALESCE(rs.negative_reviews, 0) * 0.03
             ) AS negative_penalty
@@ -512,8 +609,11 @@ def _get_candidate_stats(conn, user_id: int, product_ids: list[int]) -> dict[int
         LEFT JOIN categories c ON c.id = p.category_id
         LEFT JOIN order_stats os ON os.product_id = p.id
         LEFT JOIN interaction_stats ist ON ist.product_id = p.id
+        LEFT JOIN cart_stats cs ON cs.product_id = p.id
+        LEFT JOIN chat_stats chs ON chs.product_id = p.id
         LEFT JOIN review_stats rs ON rs.product_id = p.id
         LEFT JOIN user_negative un ON un.product_id = p.id
+        LEFT JOIN return_negative rn ON rn.product_id = p.id
         WHERE p.id = ANY(:pids)
     """), {"uid": user_id, "pids": product_ids}).mappings().all()
     return {r["product_id"]: dict(r) for r in rows}

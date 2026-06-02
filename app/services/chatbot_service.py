@@ -4,6 +4,7 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from sqlalchemy import text
 from app.services.rag_service import search_similar_products
+from app.services.recommendation_service import get_recommendations_for_user
 from app.services.db_service import db
 
 engine = db.get_engine()
@@ -142,6 +143,9 @@ def _retrieve_context(conn, message: str, user_id: int | None = None) -> tuple[s
     # Gọi trực tiếp hàm RAG đã được tối ưu siêu việt của bạn
     # Hàm này tự động gọi Intent Service, lọc SQL giá, màu sắc và Rerank
     retrieved_ids = search_similar_products(query_text=message, top_k=_RAG_TOP_K, user_id=user_id)
+    if user_id and _is_body_or_preference_question(message):
+        recommendation_ids = get_recommendations_for_user(user_id=user_id, limit=_RAG_TOP_K)
+        retrieved_ids = _merge_ordered_ids(retrieved_ids, recommendation_ids, _RAG_TOP_K)
     
     if not retrieved_ids:
         return "Không có sản phẩm phù hợp.", []
@@ -202,6 +206,28 @@ def _build_personalization_context(conn, user_id: int | None) -> str:
         FROM users
         WHERE id = :uid
     """), {"uid": user_id}).mappings().first()
+
+    cart_rows = conn.execute(text("""
+        SELECT
+            p.name,
+            c.name AS category_name,
+            COALESCE(b.name, '') AS brand_name,
+            SUM(ci.quantity) AS quantity,
+            MAX(ci.created_at) AS last_added_at
+        FROM carts cart
+        JOIN cart_items ci ON ci.cart_id = cart.id
+        JOIN product_skus ps ON ps.id = ci.product_sku_id
+        JOIN products p ON p.id = ps.product_id
+        LEFT JOIN categories c ON c.id = p.category_id
+        LEFT JOIN brands b ON b.id = p.brand_id
+        WHERE cart.user_id = :uid
+          AND p.is_active = TRUE
+          AND ps.is_active = TRUE
+          AND ps.stock_quantity > 0
+        GROUP BY p.id, p.name, c.name, b.name
+        ORDER BY MAX(ci.created_at) DESC
+        LIMIT 5
+    """), {"uid": user_id}).mappings().all()
 
     rows = conn.execute(text("""
         WITH brand_catalog AS (
@@ -283,12 +309,71 @@ def _build_personalization_context(conn, user_id: int | None) -> str:
         LIMIT 5
     """), {"uid": user_id}).scalars().all()
 
+    return_rows = conn.execute(text("""
+        SELECT DISTINCT p.name
+        FROM order_returns ors
+        JOIN orders o ON o.id = ors.order_id
+        JOIN order_items oi ON oi.order_id = o.id
+        JOIN product_skus ps ON ps.id = oi.product_sku_id
+        JOIN products p ON p.id = ps.product_id
+        WHERE ors.user_id = :uid
+          AND ors.status IN ('PENDING', 'APPROVED')
+        ORDER BY p.name
+        LIMIT 5
+    """), {"uid": user_id}).scalars().all()
+
+    positive_review_rows = conn.execute(text("""
+        SELECT p.name, r.rating, c.name AS category_name
+        FROM reviews r
+        JOIN products p ON p.id = r.product_id
+        LEFT JOIN categories c ON c.id = p.category_id
+        WHERE r.user_id = :uid AND r.rating >= 4
+        ORDER BY r.created_at DESC
+        LIMIT 5
+    """), {"uid": user_id}).mappings().all()
+
+    chat_rows = conn.execute(text("""
+        SELECT cm.message_text
+        FROM chatbot_sessions cs
+        JOIN chatbot_messages cm ON cm.session_id = cs.id
+        WHERE cs.user_id = :uid
+          AND cm.sender_type = 'USER'
+        ORDER BY cm.created_at DESC
+        LIMIT 5
+    """), {"uid": user_id}).scalars().all()
+
+    chat_product_rows = conn.execute(text("""
+        WITH chat_product_ids AS (
+            SELECT CAST(TRIM(pid) AS INTEGER) AS product_id, cm.created_at
+            FROM chatbot_sessions cs
+            JOIN chatbot_messages cm ON cm.session_id = cs.id
+            CROSS JOIN LATERAL regexp_split_to_table(COALESCE(cm.retrieved_product_ids, ''), ',') AS pid
+            WHERE cs.user_id = :uid
+              AND TRIM(pid) ~ '^[0-9]+$'
+        )
+        SELECT p.name
+        FROM chat_product_ids cpi
+        JOIN products p ON p.id = cpi.product_id
+        GROUP BY p.id, p.name
+        ORDER BY MAX(cpi.created_at) DESC
+        LIMIT 5
+    """), {"uid": user_id}).scalars().all()
+
     parts = []
     if profile:
         height = profile["height"]
         weight = profile["weight"]
         if height or weight:
-            parts.append(f"Chỉ số cơ thể: cao {height or 'chưa có'} cm, nặng {weight or 'chưa có'} kg. Khi tư vấn quần áo, dùng thông tin này để gợi ý size/fit một cách thận trọng.")
+            bmi = _compute_bmi(height, weight)
+            bmi_label = _bmi_label(bmi)
+            likely_sizes = _estimate_clothing_sizes(height, weight)
+            parts.append(
+                "Hồ sơ cơ thể lấy từ DB theo user_id: "
+                f"cao {height or 'chưa có'} cm, nặng {weight or 'chưa có'} kg"
+                f"{f', BMI khoảng {bmi:.1f} ({bmi_label})' if bmi else ''}"
+                f"{f', size quần áo ước lượng: {', '.join(likely_sizes)}' if likely_sizes else ''}. "
+                "Khi tư vấn quần áo/giày, dùng dữ liệu này để gợi ý fit/size một cách thận trọng."
+            )
     if rows:
         favs = [
             f"{r['category_name'] or 'danh mục khác'} / {r['brand_name']}"
@@ -296,9 +381,94 @@ def _build_personalization_context(conn, user_id: int | None) -> str:
             for r in rows
         ]
         parts.append("Sở thích suy ra từ hành vi gần đây: " + "; ".join(favs))
+    if cart_rows:
+        cart_text = [
+            f"{r['name']} x{int(r['quantity'] or 1)}"
+            + (f" ({r['category_name']})" if r["category_name"] else "")
+            for r in cart_rows
+        ]
+        parts.append("Sản phẩm đang trong giỏ hàng, ưu tiên rất cao nếu phù hợp câu hỏi: " + "; ".join(cart_text))
+    if positive_review_rows:
+        review_text = [
+            f"{r['name']} {int(r['rating'])}/5"
+            + (f" ({r['category_name']})" if r["category_name"] else "")
+            for r in positive_review_rows
+        ]
+        parts.append("Sản phẩm/danh mục user từng đánh giá tốt: " + "; ".join(review_text))
+    if chat_rows:
+        cleaned = [str(msg).strip().replace("\n", " ")[:120] for msg in chat_rows if str(msg).strip()]
+        if cleaned:
+            parts.append("Ý định/sở thích từ lịch sử chat gần đây của chính user này: " + " | ".join(cleaned))
+    if chat_product_rows:
+        parts.append("Sản phẩm từng được hệ thống gợi ý trong lịch sử chat của user này: " + ", ".join(chat_product_rows))
     if bad_rows:
         parts.append("Nên tránh hoặc giảm ưu tiên sản phẩm từng hủy/hoàn/trả: " + ", ".join(bad_rows))
+    if return_rows:
+        parts.append("Nên giảm mạnh ưu tiên sản phẩm có yêu cầu đổi/trả: " + ", ".join(return_rows))
     return "\n".join(parts) if parts else "Chưa có đủ lịch sử cá nhân hóa; ưu tiên ý định trong câu hỏi và sản phẩm phổ biến phù hợp."
+
+
+def _is_body_or_preference_question(message: str) -> bool:
+    msg = (message or "").lower()
+    tokens = [
+        "chiều cao", "cân nặng", "bmi", "body", "dáng người", "vóc dáng",
+        "size", "fit", "vừa", "hợp với tôi", "sở thích", "thường thích",
+        "dựa trên tôi", "cá nhân hóa", "gợi ý cho tôi",
+    ]
+    return any(token in msg for token in tokens)
+
+
+def _merge_ordered_ids(primary: list[int], secondary: list[int], limit: int) -> list[int]:
+    seen = set()
+    merged = []
+    for pid in [*(primary or []), *(secondary or [])]:
+        if pid in seen:
+            continue
+        seen.add(pid)
+        merged.append(pid)
+        if len(merged) >= limit:
+            break
+    return merged
+
+
+def _compute_bmi(height_cm, weight_kg) -> float | None:
+    if not height_cm or not weight_kg:
+        return None
+    height = float(height_cm)
+    weight = float(weight_kg)
+    if height <= 0 or weight <= 0:
+        return None
+    height_m = height / 100.0
+    return weight / (height_m * height_m)
+
+
+def _bmi_label(bmi: float | None) -> str:
+    if bmi is None:
+        return "chưa đủ dữ liệu"
+    if bmi < 18.5:
+        return "thon/gầy"
+    if bmi < 23:
+        return "cân đối"
+    if bmi < 25:
+        return "hơi đầy đặn"
+    return "đầy đặn"
+
+
+def _estimate_clothing_sizes(height_cm, weight_kg) -> list[str]:
+    if not height_cm or not weight_kg:
+        return []
+    height = float(height_cm)
+    weight = float(weight_kg)
+    bmi = _compute_bmi(height, weight) or 0
+    if height < 160 and weight < 55:
+        return ["S", "M"]
+    if height < 170 and weight < 68:
+        return ["M", "S", "L"]
+    if height < 180 and weight < 82:
+        return ["L", "M", "XL"]
+    if bmi >= 27 or weight >= 82:
+        return ["XL", "XXL", "L"]
+    return ["M", "L"]
 
 
 def _load_history(conn, session_id: str, exclude_last: bool = True) -> list:

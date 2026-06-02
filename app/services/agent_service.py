@@ -77,6 +77,7 @@ Quy tắc chọn tool:
 - Tìm sản phẩm cụ thể, hỏi tên sản phẩm → search_products
 - Tư vấn, hỏi tiếp, so sánh, chào hỏi, câu hỏi thường ngày → chat_with_bot
 - Câu hỏi cá nhân hóa như "hợp với tôi không", "body type", "size nào", "tôi thường thích gì" → chat_with_bot và luôn truyền user_id nếu có
+- Câu hỏi dựa trên chiều cao/cân nặng/BMI, lịch sử chat, giỏ hàng, review, wishlist, lịch sử mua/đổi trả → chat_with_bot và luôn truyền user_id nếu có
 - "gợi ý cho tôi", "đề xuất sản phẩm", "có gì hay cho tôi" khi không có ràng buộc cụ thể → get_recommendations
 
 Quy tắc bắt buộc về arguments cho search_products:
@@ -199,13 +200,24 @@ def _exec_recommend(arguments: dict) -> tuple[str, list[dict]]:
     limit = min(int(arguments.get("limit", 6)), 20)
     product_ids = get_recommendations_for_user(user_id=uid, limit=limit)
     products = _fetch_product_details(product_ids)
-    return _format_products(products), products
+    product_text = _format_products(products)
+    if uid:
+        from app.services.chatbot_service import _build_personalization_context
+        with engine.connect() as conn:
+            personalization_text = _build_personalization_context(conn, uid)
+        product_text = f"[THÔNG TIN CÁ NHÂN HÓA]\n{personalization_text}\n\n[SẢN PHẨM GỢI Ý]\n{product_text}"
+    return product_text, products
 
 
 def _exec_chat(arguments: dict, user_message: str) -> tuple[str, list[dict], str, list]:
     """Trả về: (context_text, products, session_id, history_messages)"""
     from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
-    from app.services.chatbot_service import _build_personalization_context, _ensure_session_access
+    from app.services.chatbot_service import (
+        _build_personalization_context,
+        _ensure_session_access,
+        _is_body_or_preference_question,
+        _merge_ordered_ids,
+    )
 
     sid = arguments.get("session_id")
     uid = arguments.get("user_id")
@@ -224,6 +236,9 @@ def _exec_chat(arguments: dict, user_message: str) -> tuple[str, list[dict], str
 
         # RAG context
         retrieved_ids = search_similar_products(query_text=user_message, top_k=4, user_id=uid)
+        if uid and _is_body_or_preference_question(user_message):
+            recommendation_ids = get_recommendations_for_user(user_id=uid, limit=4)
+            retrieved_ids = _merge_ordered_ids(retrieved_ids, recommendation_ids, 4)
         if retrieved_ids:
             rows = conn.execute(text("""
                 SELECT p.id, p.name, p.base_price, p.description, p.slug,
@@ -307,8 +322,6 @@ Nếu không có sản phẩm phù hợp, nói: "Em chưa tìm được sản ph
 Không bịa thông tin giá, tên sản phẩm, hoặc tính năng ngoài ngữ cảnh.
 Trả lời ngắn gọn, tối đa 3-4 câu.
 
-QUAN TRỌNG: Khi nhắc đến sản phẩm, dùng định dạng markdown link: [Tên sản phẩm](http://localhost:8080/api/products/{id})
-Ví dụ: [Giày Nike Air Max](http://localhost:8080/api/products/2)
 """.strip()
 
 _SEARCH_PROMPT = """Bạn là trợ lý bán hàng thể thao. Dựa vào [SẢN PHẨM TÌM ĐƯỢC], hãy giới thiệu sản phẩm cho khách.
@@ -316,18 +329,15 @@ Mô tả ngắn gọn, nêu giá, thương hiệu, đặc điểm nổi bật.
 Nếu không có sản phẩm phù hợp, nói: "Em chưa tìm được sản phẩm phù hợp, anh/chị có thể mô tả rõ hơn không ạ?"
 Trả lời tự nhiên, xưng "em", gọi "anh/chị". Không dùng JSON.
 
-QUAN TRỌNG: Khi nhắc đến sản phẩm, dùng định dạng markdown link: [Tên sản phẩm](http://localhost:8080/api/products/{id})
-Ví dụ: [Giày Nike Air Max](http://localhost:8080/api/products/2)
 """.strip()
 
 _RECOMMEND_PROMPT = """Bạn là trợ lý bán hàng thể thao. Dựa vào [SẢN PHẨM GỢI Ý], hãy giới thiệu sản phẩm cho khách.
-Giải thích ngắn gọn vì sao gợi ý các sản phẩm này (dựa trên lịch sử mua/wishlist).
+Giải thích ngắn gọn vì sao gợi ý các sản phẩm này dựa trên dữ liệu cá nhân hóa: chiều cao/cân nặng/BMI nếu có, giỏ hàng, lịch sử mua, wishlist, review, hành vi tương tác, đổi/trả và lịch sử chat của đúng user hiện tại.
+Nếu thiếu chiều cao/cân nặng, nói rõ là chưa đủ dữ liệu body metric thay vì tự đoán.
 Nêu giá, thương hiệu, đặc điểm nổi bật của từng sản phẩm.
 Nếu không có sản phẩm, nói: "Em chưa có sản phẩm nào để gợi ý lúc này ạ."
 Trả lời tự nhiên, xưng "em", gọi "anh/chị". Không dùng JSON.
 
-QUAN TRỌNG: Khi nhắc đến sản phẩm, dùng định dạng markdown link: [Tên sản phẩm](http://localhost:8080/api/products/{id})
-Ví dụ: [Giày Nike Air Max](http://localhost:8080/api/products/2)
 """.strip()
 
 
@@ -355,11 +365,11 @@ def generate_streaming_reply(
 ) -> Generator[str, None, None]:
     """Sinh câu trả lời streaming kèm thông tin sản phẩm."""
 
-    if tool_name == "chat_with_bot" and history:
+    if tool_name == "chat_with_bot":
         from langchain_core.messages import SystemMessage, HumanMessage
         system_with_context = f"{_CHAT_SYSTEM_PROMPT}\n\n[SẢN PHẨM]\n{product_context}"
         messages_dict = [{"role": "system", "content": system_with_context}]
-        for msg in history:
+        for msg in history or []:
             role = "user" if isinstance(msg, HumanMessage) else "assistant"
             messages_dict.append({"role": role, "content": msg.content})
         messages_dict.append({"role": "user", "content": user_message})
@@ -375,6 +385,18 @@ def generate_streaming_reply(
         ]
 
     yield from _stream_reply(messages_dict)
+
+
+def _requires_personalized_chat(message: str) -> bool:
+    msg = (message or "").lower()
+    tokens = [
+        "chiều cao", "cân nặng", "bmi", "body", "dáng người", "vóc dáng",
+        "size", "fit", "vừa với tôi", "hợp với tôi", "sở thích", "thường thích",
+        "dựa trên tôi", "dựa trên thông tin của tôi", "cá nhân hóa",
+        "giỏ hàng", "wishlist", "review", "đánh giá của tôi", "lịch sử chat",
+        "lịch sử mua", "đã mua", "đổi trả", "trả hàng",
+    ]
+    return any(token in msg for token in tokens)
 
 
 # =====================================================================
@@ -399,6 +421,10 @@ def handle_user_request_stream(
         arguments = route.get("arguments", {})
         if user_id and "user_id" not in arguments: arguments["user_id"] = user_id
         if session_id and "session_id" not in arguments: arguments["session_id"] = session_id
+        if user_id and _requires_personalized_chat(message):
+            tool_name = "chat_with_bot"
+            arguments["message"] = message
+            arguments["user_id"] = user_id
 
         logger.info(f"🤖 LLM chọn tool='{tool_name}' args={arguments}")
 
