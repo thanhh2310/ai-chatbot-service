@@ -367,11 +367,12 @@ def _build_personalization_context(conn, user_id: int | None) -> str:
             bmi = _compute_bmi(height, weight)
             bmi_label = _bmi_label(bmi)
             likely_sizes = _estimate_clothing_sizes(height, weight)
+            bmi_part = f", BMI khoảng {bmi:.1f} ({bmi_label})" if bmi else ""
+            size_part = ", size quần áo ước lượng: " + ", ".join(likely_sizes) if likely_sizes else ""
             parts.append(
                 "Hồ sơ cơ thể lấy từ DB theo user_id: "
                 f"cao {height or 'chưa có'} cm, nặng {weight or 'chưa có'} kg"
-                f"{f', BMI khoảng {bmi:.1f} ({bmi_label})' if bmi else ''}"
-                f"{f', size quần áo ước lượng: {', '.join(likely_sizes)}' if likely_sizes else ''}. "
+                f"{bmi_part}{size_part}. "
                 "Khi tư vấn quần áo/giày, dùng dữ liệu này để gợi ý fit/size một cách thận trọng."
             )
     if rows:
