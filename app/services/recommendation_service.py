@@ -4,12 +4,15 @@ from app.services.db_service import db
 import numpy as np
 import math
 from datetime import datetime, timezone
+from app.utils.config import Config
+from app.utils.ttl_cache import TTLCache
 
 engine = db.get_engine()
 logger = logging.getLogger(__name__)
 
 _SEEDS_PER_SOURCE = 3
 _MAX_CANDIDATES = 80
+_RECOMMENDATION_CACHE = TTLCache(ttl_seconds=Config.AI_CACHE_TTL_SECONDS, max_size=512)
 
 
 def get_recommendations_for_user(user_id: int, limit: int = 6) -> list[int]:
@@ -23,6 +26,11 @@ def get_recommendations_for_user(user_id: int, limit: int = 6) -> list[int]:
       - Popularity fusion: ưu tiên sản phẩm xuất hiện nhiều lần trong lịch sử
       - Fallback: sản phẩm phổ biến nhất nếu user chưa có dữ liệu
     """
+    cache_key = (int(user_id) if user_id is not None else None, int(limit))
+    cached = _RECOMMENDATION_CACHE.get(cache_key)
+    if cached is not None:
+        return list(cached)
+
     try:
         with engine.connect() as conn:
             # ── 1. Sản phẩm loại trừ (đã mua thành công) ─────────────────────
@@ -36,12 +44,16 @@ def get_recommendations_for_user(user_id: int, limit: int = 6) -> list[int]:
 
             # ── 3. Fallback: user mới → sản phẩm phổ biến ──────────────────────
             if not seed_ids:
-                return _get_cold_start_products(conn, limit, exclude_ids, user_profile)
+                product_ids = _get_cold_start_products(conn, limit, exclude_ids, user_profile)
+                _RECOMMENDATION_CACHE.set(cache_key, product_ids)
+                return product_ids
 
             # ── 4. Embeddings của seed products ────────────────────────────────
             seed_vectors = _get_embeddings(conn, seed_ids)
             if not seed_vectors:
-                return _get_cold_start_products(conn, limit, exclude_ids, user_profile)
+                product_ids = _get_cold_start_products(conn, limit, exclude_ids, user_profile)
+                _RECOMMENDATION_CACHE.set(cache_key, product_ids)
+                return product_ids
 
             # ── 5. Tính centroid (vector trung bình có trọng số) ─────────────────
             centroid = _compute_weighted_centroid(seed_scores, seed_ids, seed_vectors)
@@ -53,7 +65,9 @@ def get_recommendations_for_user(user_id: int, limit: int = 6) -> list[int]:
             reranked = _rerank_candidates(conn, user_id, candidates, seed_scores, user_profile, limit, brand_reliable)
 
             logger.info(f"✅ Recommendations user={user_id}: {[pid for pid, _ in reranked]}")
-            return [pid for pid, _ in reranked]
+            product_ids = [pid for pid, _ in reranked]
+            _RECOMMENDATION_CACHE.set(cache_key, product_ids)
+            return product_ids
 
     except Exception as e:
         logger.error(f"❌ Recommendation lỗi user={user_id}: {e}", exc_info=True)

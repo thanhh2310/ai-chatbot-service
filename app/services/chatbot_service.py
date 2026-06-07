@@ -6,6 +6,7 @@ from sqlalchemy import text
 from app.services.rag_service import search_similar_products
 from app.services.recommendation_service import get_recommendations_for_user
 from app.services.db_service import db
+from app.utils.ttl_cache import TTLCache
 
 engine = db.get_engine()
 from app.utils.config import Config
@@ -14,21 +15,25 @@ logger = logging.getLogger(__name__)
 
 # LLM để sinh câu trả lời
 _llm = ChatOpenAI(
-    model="meta-llama/Llama-3.3-70B-Instruct-Turbo",
+    model=Config.AI_CHAT_MODEL,
     openai_api_key=Config.TOGETHER_API_KEY,
     openai_api_base="https://api.together.xyz/v1",
     temperature=0.3,
+    max_tokens=Config.AI_MAX_REPLY_TOKENS,
+    request_timeout=15,
 )
 
 # Số tin nhắn lịch sử đưa vào context
-_HISTORY_LIMIT = 6
+_HISTORY_LIMIT = 4
 # Số SP dùng làm RAG context
 _RAG_TOP_K = 4
+_PERSONALIZATION_CACHE = TTLCache(ttl_seconds=Config.AI_CACHE_TTL_SECONDS, max_size=512)
 
 _SYSTEM_PROMPT = """
 Bạn là nhân viên tư vấn bán hàng thể thao chuyên nghiệp, thân thiện.
 Xưng "em", gọi khách là "anh/chị".
 Chỉ tư vấn sản phẩm dựa trên thông tin được cung cấp trong phần [SẢN PHẨM] và [THÔNG TIN CÁ NHÂN HÓA].
+Với câu chào hỏi, cảm ơn, hoặc câu hỏi thường ngày không cần sản phẩm, trả lời tự nhiên và ngắn gọn, không cố gợi ý sản phẩm.
 Khi khách hỏi về size, màu hoặc thuộc tính sản phẩm, chỉ trả lời theo "Thuộc tính còn hàng" trong [SẢN PHẨM].
 Với câu hỏi về sở thích, body type, size, sản phẩm thường thích, hãy dùng [THÔNG TIN CÁ NHÂN HÓA] để giải thích ngắn gọn.
 Không khẳng định chắc chắn size chỉ từ chiều cao/cân nặng; hãy nói đó là ước lượng và nhắc khách kiểm tra bảng size nếu cần.
@@ -71,7 +76,11 @@ def chat_with_bot(session_id: str | None, user_id: int | None, message: str) -> 
 
             # ── 3. RAG: tìm SP liên quan ──────────────────────────────────
             context_text, retrieved_ids = _retrieve_context(conn, message, user_id)
-            personalization_text = _build_personalization_context(conn, user_id)
+            personalization_text = (
+                "Câu hỏi thường ngày; không cần truy xuất hồ sơ cá nhân."
+                if _should_skip_product_retrieval(message)
+                else _build_personalization_context(conn, user_id)
+            )
 
             # ── 4. Kéo lịch sử chat ───────────────────────────────────────
             history_messages = _load_history(conn, session_id, exclude_last=True)
@@ -140,6 +149,9 @@ def _retrieve_context(conn, message: str, user_id: int | None = None) -> tuple[s
     """
     Sử dụng sức mạnh của Hybrid RAG thay vì Vector thuần.
     """
+    if _should_skip_product_retrieval(message):
+        return "Câu hỏi thường ngày, không cần truy xuất sản phẩm.", []
+
     # Gọi trực tiếp hàm RAG đã được tối ưu siêu việt của bạn
     # Hàm này tự động gọi Intent Service, lọc SQL giá, màu sắc và Rerank
     retrieved_ids = search_similar_products(query_text=message, top_k=_RAG_TOP_K, user_id=user_id)
@@ -187,10 +199,13 @@ def _retrieve_context(conn, message: str, user_id: int | None = None) -> tuple[s
         if not r:
             continue
         available_ids.append(r["id"])
+        description = (r["description"] or "")
+        if len(description) > 220:
+            description = description[:220].rstrip() + "..."
         context_parts.append(
             f"- ID {r['id']}: {r['name']} | Giá: {r['base_price']} | "
             f"Thuộc tính còn hàng: {r['in_stock_attributes'] or 'chưa có'} | "
-            f"Mô tả: {r['description']}"
+            f"Mô tả: {description}"
         )
         
     context_text = "\n".join(context_parts)
@@ -200,6 +215,11 @@ def _retrieve_context(conn, message: str, user_id: int | None = None) -> tuple[s
 def _build_personalization_context(conn, user_id: int | None) -> str:
     if not user_id:
         return "Khách chưa đăng nhập; chỉ dùng nội dung câu hỏi và sản phẩm truy xuất."
+
+    cache_key = int(user_id)
+    cached = _PERSONALIZATION_CACHE.get(cache_key)
+    if cached is not None:
+        return str(cached)
 
     profile = conn.execute(text("""
         SELECT height, weight
@@ -406,7 +426,9 @@ def _build_personalization_context(conn, user_id: int | None) -> str:
         parts.append("Nên tránh hoặc giảm ưu tiên sản phẩm từng hủy/hoàn/trả: " + ", ".join(bad_rows))
     if return_rows:
         parts.append("Nên giảm mạnh ưu tiên sản phẩm có yêu cầu đổi/trả: " + ", ".join(return_rows))
-    return "\n".join(parts) if parts else "Chưa có đủ lịch sử cá nhân hóa; ưu tiên ý định trong câu hỏi và sản phẩm phổ biến phù hợp."
+    context = "\n".join(parts) if parts else "Chưa có đủ lịch sử cá nhân hóa; ưu tiên ý định trong câu hỏi và sản phẩm phổ biến phù hợp."
+    _PERSONALIZATION_CACHE.set(cache_key, context)
+    return context
 
 
 def _is_body_or_preference_question(message: str) -> bool:
@@ -417,6 +439,19 @@ def _is_body_or_preference_question(message: str) -> bool:
         "dựa trên tôi", "cá nhân hóa", "gợi ý cho tôi",
     ]
     return any(token in msg for token in tokens)
+
+
+def _should_skip_product_retrieval(message: str) -> bool:
+    msg = (message or "").strip().lower()
+    if not msg:
+        return True
+    casual_tokens = ["chào", "hello", "hi", "cảm ơn", "thanks", "tạm biệt"]
+    product_tokens = [
+        "giày", "áo", "quần", "mũ", "túi", "balo", "vớ", "sản phẩm", "mua",
+        "gợi ý", "đề xuất", "size", "màu", "giá", "gym", "chạy", "bóng",
+        "laptop", "coding",
+    ]
+    return any(token in msg for token in casual_tokens) and not any(token in msg for token in product_tokens)
 
 
 def _merge_ordered_ids(primary: list[int], secondary: list[int], limit: int) -> list[int]:

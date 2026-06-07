@@ -14,7 +14,8 @@ engine = db.get_engine()
 logger = logging.getLogger(__name__)
 
 _client = Together(api_key=Config.TOGETHER_API_KEY)
-_MODEL = "meta-llama/Llama-3.3-70B-Instruct-Turbo"
+_MODEL = Config.AI_CHAT_MODEL
+_ROUTER_MODEL = Config.AI_ROUTER_MODEL
 
 # =====================================================================
 # TOOL DEFINITIONS
@@ -94,12 +95,13 @@ def _call_llm_router(user_message: str, user_id: int | None, session_id: str | N
     if session_id: context_info += f"\nsession_id: {session_id}"
 
     response = _client.chat.completions.create(
-        model=_MODEL,
+        model=_ROUTER_MODEL,
         messages=[
             {"role": "system", "content": "Always return valid JSON only. No explanations, no markdown."},
             {"role": "user", "content": f"{_ROUTER_SYSTEM}\n\nContext:{context_info or ' (không có)'}\nCâu hỏi: \"{user_message}\"\nTrả về JSON:"},
         ],
         temperature=0.0,
+        max_tokens=160,
     )
 
     raw = response.choices[0].message.content.strip()
@@ -217,6 +219,7 @@ def _exec_chat(arguments: dict, user_message: str) -> tuple[str, list[dict], str
         _ensure_session_access,
         _is_body_or_preference_question,
         _merge_ordered_ids,
+        _should_skip_product_retrieval,
     )
 
     sid = arguments.get("session_id")
@@ -235,10 +238,13 @@ def _exec_chat(arguments: dict, user_message: str) -> tuple[str, list[dict], str
         conn.commit()
 
         # RAG context
-        retrieved_ids = search_similar_products(query_text=user_message, top_k=4, user_id=uid)
-        if uid and _is_body_or_preference_question(user_message):
-            recommendation_ids = get_recommendations_for_user(user_id=uid, limit=4)
-            retrieved_ids = _merge_ordered_ids(retrieved_ids, recommendation_ids, 4)
+        if _should_skip_product_retrieval(user_message):
+            retrieved_ids = []
+        else:
+            retrieved_ids = search_similar_products(query_text=user_message, top_k=4, user_id=uid)
+            if uid and _is_body_or_preference_question(user_message):
+                recommendation_ids = get_recommendations_for_user(user_id=uid, limit=4)
+                retrieved_ids = _merge_ordered_ids(retrieved_ids, recommendation_ids, 4)
         if retrieved_ids:
             rows = conn.execute(text("""
                 SELECT p.id, p.name, p.base_price, p.description, p.slug,
@@ -279,17 +285,24 @@ def _exec_chat(arguments: dict, user_message: str) -> tuple[str, list[dict], str
                 filtered_ids.append(r["id"])
                 link = f"[{r['name']}](http://localhost:8080/api/products/{r['id']})"
                 img = f"![{r['name']}]({r['thumbnail_url']})" if r.get('thumbnail_url') else ""
+                description = (r["description"] or "")
+                if len(description) > 220:
+                    description = description[:220].rstrip() + "..."
                 context_parts.append(
                     f"{img}\n{link} | Giá: {r['base_price']} | "
                     f"Thuộc tính còn hàng: {r['in_stock_attributes'] or 'chưa có'} | "
-                    f"Mô tả: {r['description']}"
+                    f"Mô tả: {description}"
                 )
             retrieved_ids = filtered_ids
             context_text = "\n".join(context_parts)
         else:
             context_text = "Không có sản phẩm phù hợp."
 
-        personalization_text = _build_personalization_context(conn, uid)
+        personalization_text = (
+            "Câu hỏi thường ngày; không cần truy xuất hồ sơ cá nhân."
+            if _should_skip_product_retrieval(user_message)
+            else _build_personalization_context(conn, uid)
+        )
         context_text = f"[THÔNG TIN CÁ NHÂN HÓA]\n{personalization_text}\n\n[SẢN PHẨM]\n{context_text}"
 
         # History
@@ -315,6 +328,7 @@ _CHAT_SYSTEM_PROMPT = """
 Bạn là nhân viên tư vấn bán hàng thể thao chuyên nghiệp, thân thiện.
 Xưng "em", gọi khách là "anh/chị".
 Chỉ tư vấn dựa trên thông tin trong phần [SẢN PHẨM] và dữ liệu cá nhân hóa đã được hệ thống truy xuất.
+Với câu chào hỏi, cảm ơn, hoặc câu hỏi thường ngày không cần sản phẩm, trả lời tự nhiên và ngắn gọn, không cố gợi ý sản phẩm.
 Khi khách hỏi về size, màu hoặc thuộc tính sản phẩm, chỉ trả lời theo "Thuộc tính còn hàng" trong [SẢN PHẨM].
 Với câu hỏi về sở thích, body type, size, sản phẩm thường thích, hãy giải thích theo lịch sử hành vi/profile nếu có.
 Không khẳng định chắc chắn size chỉ từ chiều cao/cân nặng; hãy nói đó là ước lượng và nhắc khách kiểm tra bảng size nếu cần.
@@ -347,6 +361,7 @@ def _stream_reply(messages: list[dict], temperature: float = 0.3) -> Generator[s
         model=_MODEL,
         messages=messages,
         temperature=temperature,
+        max_tokens=Config.AI_MAX_REPLY_TOKENS,
         stream=True,
     )
     for chunk in response:
@@ -399,6 +414,26 @@ def _requires_personalized_chat(message: str) -> bool:
     return any(token in msg for token in tokens)
 
 
+def _deterministic_route(message: str, user_id: int | None, session_id: str | None) -> dict | None:
+    msg = (message or "").lower()
+    if user_id and _requires_personalized_chat(message):
+        return {"tool": "chat_with_bot", "arguments": {"message": message, "user_id": user_id, "session_id": session_id}}
+
+    recommend_tokens = ["gợi ý cho tôi", "đề xuất cho tôi", "recommend", "sản phẩm phù hợp với tôi", "có gì hay cho tôi"]
+    if user_id and any(token in msg for token in recommend_tokens):
+        return {"tool": "get_recommendations", "arguments": {"user_id": user_id, "limit": 6}}
+
+    search_tokens = [
+        "tìm", "kiếm", "mua", "show", "xem", "có sản phẩm", "giày", "áo", "quần",
+        "balo", "túi", "mũ", "vớ", "size", "màu", "laptop",
+    ]
+    conversational_tokens = ["chào", "hello", "hi", "cảm ơn", "thanks", "tư vấn", "nên mua"]
+    if any(token in msg for token in search_tokens) and not any(token in msg for token in conversational_tokens):
+        return {"tool": "search_products", "arguments": {"query": message, "user_id": user_id, "top_k": 5}}
+
+    return None
+
+
 # =====================================================================
 # MAIN ENTRY POINT
 # =====================================================================
@@ -415,8 +450,8 @@ def handle_user_request_stream(
       3. Stream LLM reply với product info
     """
     try:
-        # Bước 1: LLM chọn tool
-        route = _call_llm_router(message, user_id, session_id)
+        # Bước 1: Chọn tool. Ưu tiên rule nhanh, chỉ dùng LLM router cho câu mơ hồ.
+        route = _deterministic_route(message, user_id, session_id) or _call_llm_router(message, user_id, session_id)
         tool_name = route.get("tool", "chat_with_bot")
         arguments = route.get("arguments", {})
         if user_id and "user_id" not in arguments: arguments["user_id"] = user_id

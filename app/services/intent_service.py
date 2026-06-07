@@ -5,11 +5,13 @@ from typing import Optional, List
 from together import Together
 from pydantic import BaseModel, Field
 from app.utils.config import Config
+from app.utils.ttl_cache import TTLCache
 
 logger = logging.getLogger(__name__)
 
 _client = Together(api_key=Config.TOGETHER_API_KEY)
-_MODEL = "meta-llama/Llama-3.3-70B-Instruct-Turbo"
+_MODEL = Config.AI_ROUTER_MODEL
+_INTENT_CACHE = TTLCache(ttl_seconds=Config.AI_CACHE_TTL_SECONDS, max_size=1024)
 
 class QueryIntent(BaseModel):
     search_keywords: str = Field(
@@ -182,7 +184,33 @@ def _regex_fallback_extract(query_text: str) -> dict:
     }
 
 
+def _should_use_llm_intent(query_text: str, fast_intent: dict) -> bool:
+    if not Config.AI_USE_LLM_INTENT:
+        return False
+    q = (query_text or "").lower()
+    if any(token in q for token in ["không", "trừ", "đừng", "màu", "size", "giá", "triệu", "k"]):
+        return False
+    return not any([
+        fast_intent.get("category_id"),
+        fast_intent.get("brand_name"),
+        fast_intent.get("sport_type"),
+        fast_intent.get("color_preference"),
+        fast_intent.get("max_budget"),
+    ])
+
+
 def analyze_query(query_text: str) -> dict:
+    cache_key = re.sub(r"\s+", " ", (query_text or "").strip().lower())
+    cached = _INTENT_CACHE.get(cache_key)
+    if cached is not None:
+        return dict(cached)
+
+    fast_intent = _regex_fallback_extract(query_text)
+    if not _should_use_llm_intent(query_text, fast_intent):
+        logger.info(f"🧠 Fast intent: {fast_intent}")
+        _INTENT_CACHE.set(cache_key, fast_intent)
+        return dict(fast_intent)
+
     try:
         response = _client.chat.completions.create(
             model=_MODEL,
@@ -191,6 +219,7 @@ def analyze_query(query_text: str) -> dict:
                 {"role": "user", "content": _PROMPT_TEMPLATE.format(query=query_text)},
             ],
             temperature=0.0,
+            max_tokens=220,
         )
         raw = response.choices[0].message.content.strip()
         if not raw:
@@ -202,7 +231,9 @@ def analyze_query(query_text: str) -> dict:
             raw = re.sub(r"\s*```$", "", raw)
         intent = json.loads(raw)
         logger.info(f"🧠 Intent: {intent}")
+        _INTENT_CACHE.set(cache_key, intent)
         return intent
     except Exception as e:
         logger.error(f"❌ Together API error: {e}")
-        return _regex_fallback_extract(query_text)
+        _INTENT_CACHE.set(cache_key, fast_intent)
+        return dict(fast_intent)

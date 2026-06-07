@@ -9,6 +9,7 @@ import math
 import re
 from together import Together
 from app.utils.config import Config
+from app.utils.ttl_cache import TTLCache
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +19,7 @@ _CHUNK_OVERLAP_TOKENS = 40
 _MAX_SAFE_CHARS = 1500
 
 _client = Together(api_key=Config.TOGETHER_API_KEY)
+_QUERY_EMBED_CACHE = TTLCache(ttl_seconds=Config.AI_CACHE_TTL_SECONDS, max_size=2048)
 
 
 def _estimate_tokens(text: str) -> int:
@@ -95,8 +97,14 @@ def _build_overlap_text(parts: list[str]) -> str:
 
 def embed_query(text: str) -> list[float]:
     """Embed một chuỗi text, trả về vector 1024 chiều."""
+    cache_key = re.sub(r"\s+", " ", (text or "").strip().lower())
+    cached = _QUERY_EMBED_CACHE.get(cache_key)
+    if cached is not None:
+        return list(cached)
     response = _client.embeddings.create(model=_MODEL, input=text)
-    return response.data[0].embedding
+    vector = response.data[0].embedding
+    _QUERY_EMBED_CACHE.set(cache_key, vector)
+    return vector
 
 
 def embed_batch(texts: list[str]) -> list[list[float]]:

@@ -4,6 +4,8 @@ from sqlalchemy import text
 from app.services.db_service import db
 from app.services.intent_service import analyze_query
 from app.services.embedding_service import embed_query
+from app.utils.config import Config
+from app.utils.ttl_cache import TTLCache
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +15,7 @@ _BUDGET_TOLERANCE = 1.15
 # Số ứng viên lấy ở giai đoạn 1. Lấy rộng hơn để rerank có đủ ứng viên khi vector miss.
 _CANDIDATE_MULTIPLIER = 12
 _MIN_CANDIDATES = 40
+_SEARCH_CACHE = TTLCache(ttl_seconds=Config.AI_CACHE_TTL_SECONDS, max_size=1024)
 
 _BRAND_ALIASES = {
     "nike": ["nike", "nai"],
@@ -362,6 +365,16 @@ def search_similar_products(
     top_k: int = 5,
     user_id: int | None = None,
 ) -> list[int]:
+    cache_key = (
+        re.sub(r"\s+", " ", (query_text or "").strip().lower()),
+        int(target_category_id) if target_category_id is not None else None,
+        int(top_k),
+        int(user_id) if user_id is not None else None,
+    )
+    cached = _SEARCH_CACHE.get(cache_key)
+    if cached is not None:
+        return list(cached)
+
     session = db.get_session()
     try:
         # ── Giai đoạn 0: Phân tích ý định ──────────────────────────────
@@ -396,6 +409,7 @@ def search_similar_products(
             f"✅ Query='{query_text}' | Intent={intent} | "
             f"Vector={len(vector_rows)} Lexical={len(lexical_rows)} Candidates={len(rows)} → Final={len(product_ids)}"
         )
+        _SEARCH_CACHE.set(cache_key, product_ids)
         return product_ids
 
     except Exception as e:

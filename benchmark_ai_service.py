@@ -26,6 +26,15 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+import argparse
+import concurrent.futures
+import csv
+import json
+import statistics
+import time
+import urllib.error
+import urllib.request
+import random
 
 
 DEFAULT_CASES: dict[str, list[dict[str, Any]]] = {
@@ -301,22 +310,6 @@ def benchmark_chat(base_url: str, cases: list[dict[str, Any]], timeout: float) -
         "details": details,
     }
 
-
-def throughput_payload(kind: str, cases: dict[str, list[dict[str, Any]]]) -> tuple[str, dict[str, Any]]:
-    if kind == "search":
-        case = (cases.get("search") or DEFAULT_CASES["search"])[0]
-        return "/search", {"query": case["query"], "top_k": int(case.get("top_k", 5))}
-    if kind == "recommend":
-        case = (cases.get("recommendation") or DEFAULT_CASES["recommendation"])[0]
-        return "/recommend", {"user_id": int(case["user_id"]), "limit": int(case.get("limit", 6))}
-    case = (cases.get("chat") or DEFAULT_CASES["chat"])[0]
-    return "/chat", {
-        "message": case.get("message") or case.get("query"),
-        "query": case.get("query") or case.get("message"),
-        "user_id": case.get("user_id"),
-    }
-
-
 def benchmark_throughput(
     base_url: str,
     cases: dict[str, list[dict[str, Any]]],
@@ -325,18 +318,39 @@ def benchmark_throughput(
     concurrency: int,
     timeout: float,
 ) -> dict[str, Any]:
-    endpoint, payload = throughput_payload(kind, cases)
-    url = f"{base_url}{endpoint}"
-    started = time.perf_counter()
+    # Lấy danh sách các test case theo loại (search, recommend, chat)
+    case_list = cases.get(kind) or DEFAULT_CASES.get(kind, [])
 
+    # Hàm nội bộ để bốc ngẫu nhiên 1 case
+    def get_random_payload() -> tuple[str, dict[str, Any]]:
+        case = random.choice(case_list)
+        if kind == "search":
+            return "/search", {"query": case["query"], "top_k": int(case.get("top_k", 5))}
+        if kind == "recommend":
+            return "/recommend", {"user_id": int(case["user_id"]), "limit": int(case.get("limit", 6))}
+        return "/chat", {
+            "message": case.get("message") or case.get("query"),
+            "query": case.get("query") or case.get("message"),
+            "user_id": case.get("user_id"),
+        }
+
+    started = time.perf_counter()
+    
     with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as executor:
-        futures = [executor.submit(timed_post, url, payload, timeout) for _ in range(total_requests)]
+        futures = []
+        for _ in range(total_requests):
+            # Mỗi request sẽ lấy 1 payload ngẫu nhiên
+            endpoint, payload = get_random_payload()
+            url = f"{base_url}{endpoint}"
+            futures.append(executor.submit(timed_post, url, payload, timeout))
+            
         results = [future.result() for future in concurrent.futures.as_completed(futures)]
 
     duration_s = time.perf_counter() - started
     successes = sum(1 for result in results if result.ok)
+    
     return {
-        "endpoint": endpoint,
+        "endpoint": f"/{kind}",
         "kind": kind,
         "total_requests": total_requests,
         "concurrency": concurrency,
