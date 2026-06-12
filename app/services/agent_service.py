@@ -217,6 +217,7 @@ def _exec_chat(arguments: dict, user_message: str) -> tuple[str, list[dict], str
     from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
     from app.services.chatbot_service import (
         _build_personalization_context,
+        _create_chat_session,
         _ensure_session_access,
         _is_body_or_preference_question,
         _merge_ordered_ids,
@@ -228,11 +229,9 @@ def _exec_chat(arguments: dict, user_message: str) -> tuple[str, list[dict], str
 
     with engine.connect() as conn:
         if sid:
-            _ensure_session_access(conn, sid, uid)
+            sid = _ensure_session_access(conn, sid, uid)
         else:
-            sid = str(uuid.uuid4())
-            conn.execute(text("INSERT INTO chatbot_sessions (id, user_id) VALUES (:id, :uid)"), {"id": sid, "uid": uid})
-            conn.commit()
+            sid = _create_chat_session(conn, uid)
 
         conn.execute(text("INSERT INTO chatbot_messages (session_id, sender_type, message_text) VALUES (:sid, 'USER', :msg)"),
                      {"sid": sid, "msg": user_message})

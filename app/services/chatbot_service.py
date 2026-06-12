@@ -29,6 +29,7 @@ _HISTORY_LIMIT = 4
 # Số SP dùng làm RAG context
 _RAG_TOP_K = 4
 _PERSONALIZATION_CACHE = TTLCache(ttl_seconds=Config.AI_CACHE_TTL_SECONDS, max_size=512)
+_SESSION_ID_IS_INTEGER: bool | None = None
 
 _SYSTEM_PROMPT = """
 Bạn là nhân viên tư vấn bán hàng thể thao chuyên nghiệp, thân thiện.
@@ -61,13 +62,9 @@ def chat_with_bot(session_id: str | None, user_id: int | None, message: str) -> 
         with engine.connect() as conn:
             # ── 1. Tạo session ────────────────────────────────────────────
             if session_id:
-                _ensure_session_access(conn, session_id, user_id)
+                session_id = _ensure_session_access(conn, session_id, user_id)
             else:
-                session_id = str(uuid.uuid4())
-                conn.execute(text("""
-                    INSERT INTO chatbot_sessions (id, user_id) VALUES (:id, :uid)
-                """), {"id": session_id, "uid": user_id})
-                conn.commit()
+                session_id = _create_chat_session(conn, user_id)
 
             # ── 2. Lưu tin nhắn user ──────────────────────────────────────
             conn.execute(text("""
@@ -123,19 +120,19 @@ def chat_with_bot(session_id: str | None, user_id: int | None, message: str) -> 
 
 # ── PRIVATE HELPERS ──────────────────────────────────────────────────────────
 
-def _ensure_session_access(conn, session_id: str, user_id: int | None) -> None:
+def _ensure_session_access(conn, session_id: str, user_id: int | None):
+    lookup_session_id = _coerce_session_id(conn, session_id)
+    if lookup_session_id is None:
+        return _create_chat_session(conn, user_id)
+
     row = conn.execute(text("""
         SELECT user_id
         FROM chatbot_sessions
         WHERE id = :sid
-    """), {"sid": session_id}).mappings().first()
+    """), {"sid": lookup_session_id}).mappings().first()
 
     if not row:
-        conn.execute(text("""
-            INSERT INTO chatbot_sessions (id, user_id) VALUES (:id, :uid)
-        """), {"id": session_id, "uid": user_id})
-        conn.commit()
-        return
+        return _create_chat_session(conn, user_id, requested_session_id=session_id)
 
     owner_id = row["user_id"]
     if owner_id is not None and owner_id != user_id:
@@ -145,8 +142,55 @@ def _ensure_session_access(conn, session_id: str, user_id: int | None) -> None:
             UPDATE chatbot_sessions
             SET user_id = :uid
             WHERE id = :sid AND user_id IS NULL
-        """), {"uid": user_id, "sid": session_id})
+        """), {"uid": user_id, "sid": lookup_session_id})
         conn.commit()
+    return lookup_session_id
+
+
+def _create_chat_session(conn, user_id: int | None, requested_session_id: str | None = None):
+    if _chat_session_id_is_integer(conn):
+        session_id = conn.execute(text("""
+            INSERT INTO chatbot_sessions (user_id)
+            VALUES (:uid)
+            RETURNING id
+        """), {"uid": user_id}).scalar()
+        conn.commit()
+        return session_id
+
+    session_id = requested_session_id or str(uuid.uuid4())
+    conn.execute(text("""
+        INSERT INTO chatbot_sessions (id, user_id) VALUES (:id, :uid)
+    """), {"id": session_id, "uid": user_id})
+    conn.commit()
+    return session_id
+
+
+def _coerce_session_id(conn, session_id: str | int | None):
+    if session_id is None:
+        return None
+    if not _chat_session_id_is_integer(conn):
+        return str(session_id)
+    try:
+        return int(session_id)
+    except (TypeError, ValueError):
+        return None
+
+
+def _chat_session_id_is_integer(conn) -> bool:
+    global _SESSION_ID_IS_INTEGER
+    if _SESSION_ID_IS_INTEGER is not None:
+        return _SESSION_ID_IS_INTEGER
+
+    data_type = conn.execute(text("""
+        SELECT data_type
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'chatbot_sessions'
+          AND column_name = 'id'
+        LIMIT 1
+    """)).scalar()
+    _SESSION_ID_IS_INTEGER = str(data_type or "").lower() in {"integer", "bigint", "smallint"}
+    return _SESSION_ID_IS_INTEGER
 
 def _retrieve_context(conn, message: str, user_id: int | None = None) -> tuple[str, list[int]]:
     """
