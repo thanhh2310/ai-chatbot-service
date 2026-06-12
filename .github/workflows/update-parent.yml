@@ -18,14 +18,18 @@ jobs:
 
       - name: Cập nhật code mới của thư mục AI và push lên Repo Cha
         run: |
-          # 1. Kéo code mới nhất của thư mục AI
-          git submodule update --remote ai-chatbot-service
-          
-          # 2. Định danh cho Robot
+          # 1. Định danh cho Robot trước tiên
           git config user.name "GitHub Actions Bot"
           git config user.email "actions@github.com"
           
-          # 3. Commit và Push
+          # 2. Đi thẳng vào thư mục AI, lấy thông tin và kéo nhánh dev
+          cd ai-chatbot-service
+          git fetch origin
+          git checkout dev
+          git pull origin dev
+          cd ..
+          
+          # 3. Commit và Push lên kho cha DATN
           git add ai-chatbot-service
-          git commit -m "🤖 Tự động cập nhật AI Chatbot từ commit mới nhất" || echo "Không có sự thay đổi nào"
+          git commit -m "🤖 Tự động cập nhật AI Chatbot từ nhánh dev" || echo "Không có sự thay đổi nào"
           git push
