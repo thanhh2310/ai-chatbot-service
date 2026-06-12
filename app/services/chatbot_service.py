@@ -7,6 +7,7 @@ from app.services.rag_service import search_similar_products
 from app.services.recommendation_service import get_recommendations_for_user
 from app.services.db_service import db
 from app.utils.ttl_cache import TTLCache
+from app.utils.product_reply_filter import filter_product_ids_mentioned_in_reply
 
 engine = db.get_engine()
 from app.utils.config import Config
@@ -35,6 +36,7 @@ Xưng "em", gọi khách là "anh/chị".
 Chỉ tư vấn sản phẩm dựa trên thông tin được cung cấp trong phần [SẢN PHẨM] và [THÔNG TIN CÁ NHÂN HÓA].
 Với câu chào hỏi, cảm ơn, hoặc câu hỏi thường ngày không cần sản phẩm, trả lời tự nhiên và ngắn gọn, không cố gợi ý sản phẩm.
 Khi khách hỏi về size, màu hoặc thuộc tính sản phẩm, chỉ trả lời theo "Thuộc tính còn hàng" trong [SẢN PHẨM].
+Khi gợi ý hoặc tư vấn sản phẩm, luôn nhắc đúng tên sản phẩm trong [SẢN PHẨM]; không dùng cách gọi mơ hồ như "sản phẩm đầu tiên".
 Với câu hỏi về sở thích, body type, size, sản phẩm thường thích, hãy dùng [THÔNG TIN CÁ NHÂN HÓA] để giải thích ngắn gọn.
 Không khẳng định chắc chắn size chỉ từ chiều cao/cân nặng; hãy nói đó là ước lượng và nhắc khách kiểm tra bảng size nếu cần.
 Nếu không có sản phẩm phù hợp trong ngữ cảnh, hãy thành thật nói "Em chưa tìm được sản phẩm phù hợp trong cửa hàng, anh/chị có thể mô tả rõ hơn không ạ?"
@@ -95,6 +97,7 @@ def chat_with_bot(session_id: str | None, user_id: int | None, message: str) -> 
 
         # ── 6. Lưu câu trả lời bot ───────────────────────────────────────
         with engine.connect() as conn:
+            mentioned_ids = filter_product_ids_mentioned_in_reply(conn, bot_reply, retrieved_ids)
             conn.execute(text("""
                 INSERT INTO chatbot_messages
                     (session_id, sender_type, message_text, retrieved_product_ids)
@@ -102,15 +105,15 @@ def chat_with_bot(session_id: str | None, user_id: int | None, message: str) -> 
             """), {
                 "sid":  session_id,
                 "msg":  bot_reply,
-                "pids": ",".join(map(str, retrieved_ids)),
+                "pids": ",".join(map(str, mentioned_ids)),
             })
             conn.commit()
 
         return {
             "session_id":           session_id,
             "reply":                bot_reply,
-            "suggested_product_ids": retrieved_ids,
-            "product_ids":          retrieved_ids,
+            "suggested_product_ids": mentioned_ids,
+            "product_ids":          mentioned_ids,
         }
 
     except Exception as e:

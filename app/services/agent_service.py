@@ -9,6 +9,7 @@ from app.utils.config import Config
 from app.services.rag_service import search_similar_products
 from app.services.recommendation_service import get_recommendations_for_user
 from app.services.db_service import db
+from app.utils.product_reply_filter import filter_products_mentioned_in_reply
 
 engine = db.get_engine()
 logger = logging.getLogger(__name__)
@@ -330,6 +331,7 @@ Xưng "em", gọi khách là "anh/chị".
 Chỉ tư vấn dựa trên thông tin trong phần [SẢN PHẨM] và dữ liệu cá nhân hóa đã được hệ thống truy xuất.
 Với câu chào hỏi, cảm ơn, hoặc câu hỏi thường ngày không cần sản phẩm, trả lời tự nhiên và ngắn gọn, không cố gợi ý sản phẩm.
 Khi khách hỏi về size, màu hoặc thuộc tính sản phẩm, chỉ trả lời theo "Thuộc tính còn hàng" trong [SẢN PHẨM].
+Khi gợi ý hoặc tư vấn sản phẩm, luôn nhắc đúng tên sản phẩm trong [SẢN PHẨM]; không dùng cách gọi mơ hồ như "sản phẩm đầu tiên".
 Với câu hỏi về sở thích, body type, size, sản phẩm thường thích, hãy giải thích theo lịch sử hành vi/profile nếu có.
 Không khẳng định chắc chắn size chỉ từ chiều cao/cân nặng; hãy nói đó là ước lượng và nhắc khách kiểm tra bảng size nếu cần.
 Nếu không có sản phẩm phù hợp, nói: "Em chưa tìm được sản phẩm phù hợp trong cửa hàng, anh/chị có thể mô tả rõ hơn không ạ?"
@@ -340,6 +342,7 @@ Trả lời ngắn gọn, tối đa 3-4 câu.
 
 _SEARCH_PROMPT = """Bạn là trợ lý bán hàng thể thao. Dựa vào [SẢN PHẨM TÌM ĐƯỢC], hãy giới thiệu sản phẩm cho khách.
 Mô tả ngắn gọn, nêu giá, thương hiệu, đặc điểm nổi bật.
+Khi nhắc sản phẩm, dùng đúng tên sản phẩm trong [SẢN PHẨM TÌM ĐƯỢC].
 Nếu không có sản phẩm phù hợp, nói: "Em chưa tìm được sản phẩm phù hợp, anh/chị có thể mô tả rõ hơn không ạ?"
 Trả lời tự nhiên, xưng "em", gọi "anh/chị". Không dùng JSON.
 
@@ -349,6 +352,7 @@ _RECOMMEND_PROMPT = """Bạn là trợ lý bán hàng thể thao. Dựa vào [S�
 Giải thích ngắn gọn vì sao gợi ý các sản phẩm này dựa trên dữ liệu cá nhân hóa: chiều cao/cân nặng/BMI nếu có, giỏ hàng, lịch sử mua, wishlist, review, hành vi tương tác, đổi/trả và lịch sử chat của đúng user hiện tại.
 Nếu thiếu chiều cao/cân nặng, nói rõ là chưa đủ dữ liệu body metric thay vì tự đoán.
 Nêu giá, thương hiệu, đặc điểm nổi bật của từng sản phẩm.
+Khi nhắc sản phẩm, dùng đúng tên sản phẩm trong [SẢN PHẨM GỢI Ý].
 Nếu không có sản phẩm, nói: "Em chưa có sản phẩm nào để gợi ý lúc này ạ."
 Trả lời tự nhiên, xưng "em", gọi "anh/chị". Không dùng JSON.
 
@@ -487,6 +491,7 @@ def handle_user_request_stream(
             yield {"type": "chunk", "content": chunk, "tool": tool_name, "session_id": session_id}
 
         full_reply = "".join(reply_chunks)
+        products = filter_products_mentioned_in_reply(full_reply, products)
 
         # Lưu reply vào DB nếu là chat
         if tool_name == "chat_with_bot" and session_id:
