@@ -1,0 +1,31 @@
+name: Tự động cập nhật Submodule AI cho Repo Cha
+
+on:
+  push:
+    branches: [ "dev" ] # Lắng nghe sự thay đổi trên nhánh main
+
+jobs:
+  update-parent:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Lấy code của Repo Cha về
+        uses: actions/checkout@v4
+        with:
+          # LƯU Ý: Thay 'DATN' bằng 'ecommerce_AI' nếu kho cha thực sự của bạn tên là ecommerce_AI
+          repository: thanhh2310/ecommerce_AI 
+          token: ${{ secrets.PAT_TOKEN }}
+          submodules: true
+
+      - name: Cập nhật code mới của thư mục AI và push lên Repo Cha
+        run: |
+          # 1. Kéo code mới nhất của thư mục AI
+          git submodule update --remote ai-chatbot-service
+          
+          # 2. Định danh cho Robot
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+          
+          # 3. Commit và Push
+          git add ai-chatbot-service
+          git commit -m "🤖 Tự động cập nhật AI Chatbot từ commit mới nhất" || echo "Không có sự thay đổi nào"
+          git push
