@@ -153,13 +153,7 @@ def _regex_fallback_extract(query_text: str) -> dict:
     if m := re.search(r'màu\s+(đen|trắng|đỏ|xanh|xám|vàng|hồng|tím|cam|nâu)', clean_q):
         color_pref = m.group(1)
 
-    has_shoes = "giày" in clean_q or "dép" in clean_q
-    has_apparel = any(w in clean_q for w in ["áo", "quần", "bộ", "tập gym"])
-    cat_id = None
-    if has_shoes and not has_apparel:
-        cat_id = 1
-    elif has_apparel and not has_shoes:
-        cat_id = 2
+    cat_id = _infer_catalog_category_id(clean_q)
 
     sport = None
     if any(w in q for w in ["đá bóng", "bóng đá"]):
@@ -182,6 +176,32 @@ def _regex_fallback_extract(query_text: str) -> dict:
         "price_tier": None,
         "excluded_keywords": excluded,
     }
+
+
+def _infer_catalog_category_id(clean_q: str) -> int | None:
+    q = clean_q.lower()
+    rules: list[tuple[int, list[str]]] = [
+        (16, ["gaiter", "mặt nạ", "mat na"]),
+        (15, ["thắt lưng", "that lung", "ví", "vi da"]),
+        (14, ["túi đeo", "tui deo", "túi tote", "tote", "duffle", "túi trống", "tui trong", "túi gym", "tui gym", "túi"]),
+        (13, ["tất", "vớ", "vo ", "cổ cao", "co cao"]),
+        (11, ["quần bơi", "quan boi", "swimming", "trunks", "jammer"]),
+        (10, ["jogger", "quần dài", "quan dai", "outdoor", "túi hộp", "tui hop", "pants"]),
+        (9, ["quần short", "quan short", "shorts", "short "]),
+        (6, ["áo khoác", "ao khoac", "chống uv", "chong uv", "jacket", "windbreaker"]),
+        (5, ["áo polo", "ao polo", "polo"]),
+        (4, ["sơ mi", "so mi", "shirt", "oxford", "flannel", "overshirt", "poplin", "modal"]),
+        (7, ["tanktop nam", "tank top nam", "sát nách", "sat nach"]),
+        (24, ["áo bra", "ao bra", "bra thể thao", "bra the thao"]),
+        (23, ["singlet", "pickleball"]),
+        (22, ["áo thun nữ", "ao thun nu", "tshirt nữ", "tshirt nu"]),
+        (3, ["áo thun", "ao thun", "t-shirt", "tshirt", "tee", "cotton compact"]),
+        (17, ["headband", "khăn tập", "khan tap", "bandana", "bó chân", "bo chan", "găng tay", "gang tay"]),
+    ]
+    for category_id, aliases in rules:
+        if any(alias in q for alias in aliases):
+            return category_id
+    return None
 
 
 def _should_use_llm_intent(query_text: str, fast_intent: dict) -> bool:

@@ -163,6 +163,8 @@ def _merge_candidates(*candidate_lists: list[dict]) -> list[dict]:
                 continue
             existing["distance"] = min(float(existing.get("distance", 1.2)), float(row.get("distance", 1.2)))
             existing["lexical_score"] = max(float(existing.get("lexical_score", 0.0)), float(row.get("lexical_score", 0.0)))
+            if not existing.get("category_id") and row.get("category_id"):
+                existing["category_id"] = row.get("category_id")
             if len(row.get("content") or "") > len(existing.get("content") or ""):
                 existing["content"] = row.get("content")
     return list(merged.values())
@@ -176,6 +178,7 @@ def _find_vector_candidates(session, query_vector: list[float], intent: dict, ta
     sql = text(f"""
         SELECT
             pe.product_id,
+            p.category_id,
             CONCAT(pe.content, ' ', COALESCE(attrs.in_stock_attributes, '')) AS content,
             (pe.embedding <=> CAST(:vector AS vector)) AS distance,
             0.0::float AS lexical_score
@@ -231,6 +234,7 @@ def _find_lexical_candidates(session, intent: dict, target_category_id: int | No
     sql = text(f"""
         SELECT
             p.id AS product_id,
+            p.category_id,
             CONCAT_WS(' ', p.name, p.description, b.name, c.name, attrs.in_stock_attributes) AS content,
             1.2::float AS distance,
             ({" + ".join(score_parts)}) AS lexical_score
@@ -263,6 +267,7 @@ def _find_broad_candidates(session, intent: dict, target_category_id: int | None
     sql = text(f"""
         SELECT
             p.id AS product_id,
+            p.category_id,
             CONCAT_WS(' ', p.name, p.description, b.name, c.name, attrs.in_stock_attributes) AS content,
             1.4::float AS distance,
             0.0::float AS lexical_score
@@ -294,6 +299,7 @@ def _rerank(candidates: list[dict], intent: dict, top_k: int, user_id: int | Non
     """
     excluded = [w.lower() for w in intent.get("excluded_keywords", [])]
     color_pref = (intent.get("color_preference") or "").lower()
+    intended_category_id = intent.get("category_id")
     boost_keywords = [
         kw.lower() for kw in (intent.get("search_keywords") or "").split()
         if len(kw) > 2
@@ -328,6 +334,8 @@ def _rerank(candidates: list[dict], intent: dict, top_k: int, user_id: int | Non
         # 3. FIX: Thưởng nếu content khớp màu ưa thích (Tăng mạnh điểm để đè bẹp Vector_score nếu sai màu)
         if color_pref and re.search(rf'(?:^|\s|\W|_){re.escape(color_pref)}(?:$|\s|\W|_)', content_lower, flags=re.IGNORECASE | re.UNICODE):
             boost += 0.25
+        elif color_pref:
+            boost -= 0.22
             
         # 4. FIX: Thưởng theo số keyword khớp trong content (Regex hỗ trợ tiếng Việt)
         matched = 0
@@ -335,7 +343,13 @@ def _rerank(candidates: list[dict], intent: dict, top_k: int, user_id: int | Non
             if re.search(rf'(?:^|\s|\W|_){re.escape(kw)}(?:$|\s|\W|_)', content_lower, flags=re.IGNORECASE | re.UNICODE):
                 matched += 1
         keyword_score = min(matched / max(len(boost_keywords), 1), 1.0)
-        boost += matched * 0.04
+        boost += matched * 0.07
+
+        if intended_category_id:
+            if int(row.get("category_id") or -1) == int(intended_category_id):
+                boost += 0.35
+            else:
+                boost -= 0.28
 
         personalization = 0.0
         feature = personal_features.get(row["product_id"])
@@ -346,9 +360,9 @@ def _rerank(candidates: list[dict], intent: dict, top_k: int, user_id: int | Non
             boost -= float(feature.get("penalty", 0.0))
 
         final_score = (
-            0.42 * vector_score
-            + 0.28 * lexical_score
-            + 0.15 * keyword_score
+            0.22 * vector_score
+            + 0.43 * lexical_score
+            + 0.20 * keyword_score
             + 0.15 * personalization
             + boost
         )

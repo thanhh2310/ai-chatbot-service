@@ -1,0 +1,565 @@
+{
+  "search": [
+    {
+      "name": "ao-thun-nam-the-thao",
+      "query": "áo thun nam thể thao thoáng khí",
+      "top_k": 5,
+      "expected_product_ids": [1, 2, 3, 4, 5]
+    },
+    {
+      "name": "ao-den-size-xl",
+      "query": "áo màu đen size XL còn hàng",
+      "top_k": 5,
+      "expected_product_ids": [4, 5, 11, 40]
+    },
+    {
+      "name": "ao-nu-size-m",
+      "query": "áo nữ size M còn hàng",
+      "top_k": 8,
+      "expected_product_ids": [19, 20, 22, 24, 25, 26, 28, 29]
+    },
+    {
+      "name": "so-mi-trang-size-m",
+      "query": "áo sơ mi trắng size M",
+      "top_k": 5,
+      "expected_product_ids": [7, 15]
+    },
+    {
+      "name": "polo-nam-the-thao",
+      "query": "áo polo nam thể thao",
+      "top_k": 5,
+      "expected_product_ids": [18, 31, 32, 33, 34]
+    },
+    {
+      "name": "quan-short-nam",
+      "query": "quần short nam chạy bộ tập gym",
+      "top_k": 5,
+      "expected_product_ids": [43, 44, 45, 46, 47]
+    },
+    {
+      "name": "quan-dai-nam",
+      "query": "quần dài nam thể thao outdoor",
+      "top_k": 5,
+      "expected_product_ids": [48, 49, 50, 51, 52]
+    },
+    {
+      "name": "vo-tat-nam",
+      "query": "tất vớ nam bóng đá chạy bộ",
+      "top_k": 5,
+      "expected_product_ids": [57, 58, 59, 60, 61]
+    },
+    {
+      "name": "tui-the-thao-gym",
+      "query": "túi thể thao tập gym duffle tote",
+      "top_k": 5,
+      "expected_product_ids": [66, 67, 68, 69]
+    },
+    {
+      "name": "ao-bra-the-thao-nu",
+      "query": "áo bra thể thao nữ size M",
+      "top_k": 5,
+      "expected_product_ids": [26, 28, 29]
+    },
+    {
+      "name": "ao-khoac-nam",
+      "query": "áo khoác nam chống uv năng động",
+      "top_k": 5,
+      "expected_product_ids": [35, 36, 37, 38]
+    },
+    {
+      "name": "ao-tank-top-nam",
+      "query": "áo sát nách tank top nam tập gym",
+      "top_k": 5,
+      "expected_product_ids": [39, 40, 41, 42]
+    },
+    {
+      "name": "quan-boi-nam",
+      "query": "quần bơi nam swimming trunks",
+      "top_k": 5,
+      "expected_product_ids": [53, 55, 56]
+    },
+    {
+      "name": "ao-so-mi-den",
+      "query": "áo sơ mi màu đen nam",
+      "top_k": 5,
+      "expected_product_ids": [11, 17]
+    },
+    {
+      "name": "ao-thun-chay-bo-nu",
+      "query": "áo thun nữ chạy bộ thể thao",
+      "top_k": 5,
+      "expected_product_ids": [19, 20, 22]
+    },
+    {
+      "name": "jogger-the-thao",
+      "query": "quần jogger thể thao nam tập gym",
+      "top_k": 5,
+      "expected_product_ids": [48, 49, 50]
+    },
+    {
+      "name": "ao-so-mi-cotton",
+      "query": "áo sơ mi cotton dài tay nam",
+      "top_k": 5,
+      "expected_product_ids": [6, 7, 8, 9, 10, 11, 12, 13, 15, 17]
+    },
+    {
+      "name": "tui-tote-bag",
+      "query": "túi tote bag thể thao",
+      "top_k": 5,
+      "expected_product_ids": [66, 67, 69, 70, 71]
+    },
+    {
+      "name": "phu-kien-chay-bo",
+      "query": "phụ kiện chạy bộ gaiter mặt nạ",
+      "top_k": 5,
+      "expected_product_ids": [78, 79]
+    },
+    {
+      "name": "that-lung-nam-da-bo",
+      "query": "thắt lưng nam da bò",
+      "top_k": 5,
+      "expected_product_ids": [75, 76, 77]
+    },
+    {
+      "name": "ao-polo-xanh-navy",
+      "query": "áo polo nam màu xanh navy",
+      "top_k": 5,
+      "expected_product_ids": [33, 34]
+    },
+    {
+      "name": "ao-singlet-nu-pickleball",
+      "query": "áo singlet nữ pickleball thể thao",
+      "top_k": 5,
+      "expected_product_ids": [23, 24, 25]
+    },
+    {
+      "name": "ao-den-nam-size-2xl",
+      "query": "áo nam màu đen size 2XL",
+      "top_k": 5,
+      "expected_product_ids": [4, 5]
+    },
+    {
+      "name": "headband-khan-tap",
+      "query": "headband khăn tập gym thể thao",
+      "top_k": 5,
+      "expected_product_ids": [84, 85]
+    },
+    {
+      "name": "quan-short-den-nam",
+      "query": "quần short nam màu đen",
+      "top_k": 5,
+      "expected_product_ids": [43, 44, 46, 47]
+    },
+    {
+      "name": "ao-thun-xam-nam",
+      "query": "áo thun nam màu xám",
+      "top_k": 5,
+      "expected_product_ids": [4, 9]
+    },
+    {
+      "name": "ao-so-mi-be",
+      "query": "áo sơ mi màu be nam",
+      "top_k": 5,
+      "expected_product_ids": [11, 12]
+    },
+    {
+      "name": "gang-tay-chong-uv",
+      "query": "găng tay chống uv nắng thể thao",
+      "top_k": 5,
+      "expected_product_ids": [83]
+    },
+    {
+      "name": "ao-polo-cotton-pique",
+      "query": "áo polo cotton pique nam",
+      "top_k": 5,
+      "expected_product_ids": [31, 32, 33, 34]
+    },
+    {
+      "name": "bo-chan-the-thao",
+      "query": "bó chân thể thao tập gym",
+      "top_k": 5,
+      "expected_product_ids": [82]
+    },
+    {
+      "name": "tui-deo-hong",
+      "query": "túi đeo hông đa năng chạy bộ",
+      "top_k": 5,
+      "expected_product_ids": [81]
+    },
+    {
+      "name": "ao-nu-do",
+      "query": "áo nữ màu đỏ thể thao",
+      "top_k": 5,
+      "expected_product_ids": [3, 19, 29, 39]
+    },
+    {
+      "name": "ao-tanktop-do-nam",
+      "query": "tanktop nam màu đỏ chạy bộ",
+      "top_k": 5,
+      "expected_product_ids": [39]
+    },
+    {
+      "name": "so-mi-overshirt",
+      "query": "áo overshirt cotton nam",
+      "top_k": 5,
+      "expected_product_ids": [11]
+    },
+    {
+      "name": "quan-dai-den-nam",
+      "query": "quần dài nam màu đen",
+      "top_k": 5,
+      "expected_product_ids": [48, 49, 51]
+    },
+    {
+      "name": "ao-khoac-den-nam",
+      "query": "áo khoác màu đen nam thể thao",
+      "top_k": 5,
+      "expected_product_ids": [37, 38]
+    },
+    {
+      "name": "tat-bong-da-co-cao",
+      "query": "tất bóng đá cổ cao nam",
+      "top_k": 5,
+      "expected_product_ids": [58, 59, 60]
+    },
+    {
+      "name": "tui-gym-duffle-lon",
+      "query": "túi duffle lớn tập gym 38 lít",
+      "top_k": 5,
+      "expected_product_ids": [69]
+    },
+    {
+      "name": "ao-flannel-nam",
+      "query": "áo sơ mi flannel cotton nam",
+      "top_k": 5,
+      "expected_product_ids": [12]
+    },
+    {
+      "name": "ao-thun-nu-vang",
+      "query": "áo thun nữ màu vàng",
+      "top_k": 5,
+      "expected_product_ids": [22]
+    },
+    {
+      "name": "ao-world-cup-trang",
+      "query": "áo polo world cup trắng",
+      "top_k": 5,
+      "expected_product_ids": [2, 21]
+    },
+    {
+      "name": "quan-outdoor-tui-hop",
+      "query": "quần outdoor túi hộp utility nam",
+      "top_k": 5,
+      "expected_product_ids": [51, 52]
+    },
+    {
+      "name": "ao-co-tau-so-mi",
+      "query": "áo sơ mi cổ tàu premium poplin",
+      "top_k": 5,
+      "expected_product_ids": [13, 17]
+    },
+    {
+      "name": "shorts-chay-bo-xam",
+      "query": "shorts chạy bộ nam màu xám",
+      "top_k": 5,
+      "expected_product_ids": [45, 46]
+    },
+    {
+      "name": "ao-oxford-premium",
+      "query": "áo sơ mi oxford premium dài tay",
+      "top_k": 5,
+      "expected_product_ids": [10]
+    },
+    {
+      "name": "ao-modal-essential",
+      "query": "áo sơ mi modal essential dài tay",
+      "top_k": 5,
+      "expected_product_ids": [9]
+    },
+    {
+      "name": "tat-xo-ngon-chay-bo",
+      "query": "tất xỏ ngón chạy bộ",
+      "top_k": 5,
+      "expected_product_ids": [61]
+    },
+    {
+      "name": "ao-thun-compact-cotton",
+      "query": "áo thun cotton compact nam",
+      "top_k": 5,
+      "expected_product_ids": [4]
+    },
+    {
+      "name": "ao-bra-hong-nu",
+      "query": "áo bra thể thao nữ màu hồng",
+      "top_k": 5,
+      "expected_product_ids": [28]
+    },
+    {
+      "name": "khan-bandana-world-cup",
+      "query": "khăn bandana world cup royal",
+      "top_k": 5,
+      "expected_product_ids": [80]
+    }
+  ],
+  "recommendation": [
+    {
+      "name": "user-1-cold-start",
+      "user_id": 1,
+      "limit": 6,
+      "relevant_product_ids": [1, 2, 3, 4, 5, 18, 31, 32, 33, 34, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52]
+    },
+    {
+      "name": "user-2-cold-start",
+      "user_id": 2,
+      "limit": 6,
+      "relevant_product_ids": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 31, 32, 33, 34, 35, 36, 37, 38]
+    },
+    {
+      "name": "user-3-cold-start",
+      "user_id": 3,
+      "limit": 6,
+      "relevant_product_ids": [1, 2, 3, 4, 5, 19, 20, 22, 26, 28, 29, 43, 44, 45, 46, 47]
+    },
+    {
+      "name": "user-4-cold-start",
+      "user_id": 4,
+      "limit": 6,
+      "relevant_product_ids": [1, 2, 3, 4, 5, 6, 7, 8, 39, 40, 41, 42, 57, 58, 59, 60, 61]
+    },
+    {
+      "name": "user-5-cold-start",
+      "user_id": 5,
+      "limit": 6,
+      "relevant_product_ids": [1, 2, 3, 4, 5, 11, 12, 13, 15, 17, 48, 49, 50, 51, 52, 66, 67, 68, 69]
+    },
+    {
+      "name": "user-6-cold-start",
+      "user_id": 6,
+      "limit": 6,
+      "relevant_product_ids": [1, 2, 3, 4, 5, 23, 24, 25, 26, 28, 29, 53, 55, 56]
+    },
+    {
+      "name": "user-7-cold-start",
+      "user_id": 7,
+      "limit": 6,
+      "relevant_product_ids": [1, 2, 3, 4, 5, 31, 32, 33, 34, 35, 36, 37, 38, 75, 76, 77]
+    },
+    {
+      "name": "user-8-cold-start",
+      "user_id": 8,
+      "limit": 6,
+      "relevant_product_ids": [1, 2, 3, 4, 5, 43, 44, 45, 46, 47, 66, 67, 68, 69, 78, 79]
+    },
+    {
+      "name": "user-1-limit-10",
+      "user_id": 1,
+      "limit": 10,
+      "relevant_product_ids": [1, 2, 3, 4, 5, 18, 19, 20, 22, 26, 28, 29, 31, 32, 33, 34, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52]
+    },
+    {
+      "name": "user-3-limit-10",
+      "user_id": 3,
+      "limit": 10,
+      "relevant_product_ids": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 19, 20, 22, 26, 28, 29, 43, 44, 45, 46, 47, 66, 67, 68, 69]
+    }
+  ],
+  "chat": [
+    {
+      "name": "body-size-question-user-1",
+      "user_id": 1,
+      "message": "Dựa trên chiều cao cân nặng của tôi, gợi ý áo quần phù hợp"
+    },
+    {
+      "name": "attribute-question-user-1",
+      "user_id": 1,
+      "message": "Sản phẩm nào có màu đen và size XL còn hàng?"
+    },
+    {
+      "name": "gym-bag-question-user-8",
+      "user_id": 8,
+      "message": "Tôi cần túi tập gym, gợi ý sản phẩm phù hợp"
+    },
+    {
+      "name": "casual-greeting",
+      "message": "Chào shop, hôm nay có thể tư vấn gì cho tôi?"
+    },
+    {
+      "name": "running-gear-question-user-2",
+      "user_id": 2,
+      "message": "Tôi chạy bộ thường xuyên, nên mua áo nào?"
+    },
+    {
+      "name": "swim-trunks-question-user-4",
+      "user_id": 4,
+      "message": "Có quần bơi nam nào size L không?"
+    },
+    {
+      "name": "polo-color-question",
+      "user_id": 3,
+      "message": "Áo polo nam có những màu nào còn hàng?"
+    },
+    {
+      "name": "size-comparison-question",
+      "user_id": 5,
+      "message": "Tôi cao 175cm nặng 70kg nên mặc size gì cho áo polo?"
+    },
+    {
+      "name": "jacket-question-user-6",
+      "user_id": 6,
+      "message": "Gợi ý áo khoác nam chống UV đi ngoài trời"
+    },
+    {
+      "name": "socks-football-question",
+      "user_id": 7,
+      "message": "Tất bóng đá cổ cao nào còn hàng size 39-42?"
+    },
+    {
+      "name": "shorts-gym-question-user-3",
+      "user_id": 3,
+      "message": "Quần short nào phù hợp tập gym giá dưới 300k?"
+    },
+    {
+      "name": "female-bra-question",
+      "user_id": 2,
+      "message": "Áo bra thể thao nữ nào hỗ trợ tốt cho chạy bộ?"
+    },
+    {
+      "name": "thank-you-response",
+      "message": "Cảm ơn shop nhiều nha, hẹn gặp lại"
+    },
+    {
+      "name": "tanktop-question-user-1",
+      "user_id": 1,
+      "message": "Áo tanktop nam nào thoáng khí nhất cho tập gym?"
+    },
+    {
+      "name": "jogger-recommendation-user-5",
+      "user_id": 5,
+      "message": "Tôi muốn mua quần jogger thể thao, có sản phẩm nào tốt?"
+    },
+    {
+      "name": "dress-shirt-question-user-4",
+      "user_id": 4,
+      "message": "Sơ mi dài tay nào phù hợp mặc đi làm hàng ngày?"
+    },
+    {
+      "name": "brand-question",
+      "user_id": 6,
+      "message": "Shop có những thương hiệu nào? Có nike adidas không?"
+    },
+    {
+      "name": "outdoor-pants-question-user-7",
+      "user_id": 7,
+      "message": "Quần outdoor có túi hộp nào cho nam?"
+    },
+    {
+      "name": "gift-suggestion-question",
+      "user_id": 8,
+      "message": "Tôi muốn tặng quà cho bạn nam, nên chọn gì giá tầm 200-500k?"
+    },
+    {
+      "name": "size-s-female-question",
+      "user_id": 3,
+      "message": "Áo nữ size S còn hàng những sản phẩm nào?"
+    },
+    {
+      "name": "pickleball-gear-question",
+      "user_id": 1,
+      "message": "Sản phẩm nào phù hợp chơi pickleball?"
+    },
+    {
+      "name": "belt-wallet-question-user-5",
+      "user_id": 5,
+      "message": "Có thắt lưng da bò nào cho nam không?"
+    },
+    {
+      "name": "white-shirt-question",
+      "user_id": 2,
+      "message": "Áo sơ mi trắng dài tay nào phù hợp đi làm?"
+    },
+    {
+      "name": "headband-accessories-question",
+      "user_id": 4,
+      "message": "Có phụ kiện nào cho tập gym như headband khăn?"
+    },
+    {
+      "name": "black-jacket-question-user-6",
+      "user_id": 6,
+      "message": "Áo khoác đen nào còn hàng size M?"
+    },
+    {
+      "name": "compare-products-question",
+      "user_id": 7,
+      "message": "So sánh túi gym và túi duffle, cái nào lớn hơn?"
+    },
+    {
+      "name": "tshirt-nu-hong-question",
+      "user_id": 8,
+      "message": "Áo nữ màu hồng nào còn hàng?"
+    },
+    {
+      "name": "world-cup-collection-question",
+      "user_id": 1,
+      "message": "Có bộ sưu tập World Cup nào không?"
+    },
+    {
+      "name": "running-mask-gaiter-question",
+      "user_id": 2,
+      "message": "Mặt nạ chạy bộ gaiter nào tốt cho chạy bộ ngoài trời?"
+    },
+    {
+      "name": "navy-products-question",
+      "user_id": 3,
+      "message": "Sản phẩm nào màu xanh navy còn hàng?"
+    },
+    {
+      "name": "preference-question-user-4",
+      "user_id": 4,
+      "message": "Dựa trên lịch sử của tôi, tôi thường thích sản phẩm nào?"
+    },
+    {
+      "name": "summer-outfit-question",
+      "user_id": 5,
+      "message": "Gợi ý trang phục mùa hè thoáng mát cho nam"
+    },
+    {
+      "name": "flannel-shirt-question",
+      "user_id": 6,
+      "message": "Áo flannel cotton nào còn hàng?"
+    },
+    {
+      "name": "tote-bag-question-user-7",
+      "user_id": 7,
+      "message": "Túi tote bag nào đẹp cho đi học đi chơi?"
+    },
+    {
+      "name": "daily-pants-question-user-8",
+      "user_id": 8,
+      "message": "Quần dài nam nào mặc hàng ngày thoải mái?"
+    },
+    {
+      "name": "singlet-nu-question",
+      "user_id": 1,
+      "message": "Áo singlet nữ nào phù hợp cho tập gym?"
+    },
+    {
+      "name": "price-range-under-100k",
+      "user_id": 2,
+      "message": "Sản phẩm nào giá dưới 100 nghìn đồng?"
+    },
+    {
+      "name": "gray-color-products-question",
+      "user_id": 3,
+      "message": "Có sản phẩm nào màu xám còn hàng không?"
+    },
+    {
+      "name": "cotton-material-question",
+      "user_id": 4,
+      "message": "Áo nào làm từ vải cotton 100%?"
+    },
+    {
+      "name": "casual-goodbye",
+      "message": "Ok em, anh đi nhé, cảm ơn"
+    }
+  ]
+}

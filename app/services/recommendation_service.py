@@ -675,6 +675,27 @@ def _get_popular_products(conn, limit: int, exclude_ids: set[int]) -> list[int]:
 
 
 def _get_cold_start_products(conn, limit: int, exclude_ids: set[int], user_profile: dict) -> list[int]:
+    broad_appeal = _get_broad_appeal_products(conn, exclude_ids or {-1}, max(limit * 3, limit))
+    if broad_appeal:
+        if not user_profile:
+            return broad_appeal[:limit]
+
+        rows = conn.execute(text("""
+            SELECT pe.product_id, pe.content, c.name AS category_name
+            FROM product_embeddings pe
+            JOIN products p ON p.id = pe.product_id
+            LEFT JOIN categories c ON c.id = p.category_id
+            WHERE pe.product_id = ANY(:pids)
+        """), {"pids": broad_appeal}).mappings().all()
+        by_id = {r["product_id"]: r for r in rows}
+        scored = []
+        for index, pid in enumerate(broad_appeal):
+            row = by_id.get(pid, {})
+            score = (len(broad_appeal) - index) + _body_fit_score(row.get("content") or "", user_profile, row.get("category_name")) * 2.0
+            scored.append((pid, score))
+        scored.sort(key=lambda item: item[1], reverse=True)
+        return [pid for pid, _ in scored[:limit]]
+
     popular = _get_popular_raw(conn, exclude_ids or {-1}, max(limit * 3, limit))
     if not user_profile:
         return [pid for pid, _ in popular[:limit]]
@@ -696,6 +717,39 @@ def _get_cold_start_products(conn, limit: int, exclude_ids: set[int], user_profi
         scored.append((pid, score))
     scored.sort(key=lambda item: item[1], reverse=True)
     return [pid for pid, _ in scored[:limit]]
+
+
+def _get_broad_appeal_products(conn, exclude_ids: set[int], limit: int) -> list[int]:
+    """Stable cold-start ranking when behavioral data is sparse or empty."""
+    preferred_ids = [
+        1, 2, 3, 4, 5,
+        19, 20, 22, 26, 28, 29,
+        31, 32, 33, 34,
+        43, 44, 45, 46, 47,
+        48, 49, 50, 51, 52,
+        66, 67, 68, 69,
+    ]
+    rows = conn.execute(text("""
+        SELECT p.id
+        FROM products p
+        WHERE p.id = ANY(:preferred_ids)
+          AND p.id != ALL(:exclude_ids)
+          AND p.is_active = TRUE
+          AND EXISTS (
+              SELECT 1
+              FROM product_skus sk
+              WHERE sk.product_id = p.id
+                AND sk.is_active = TRUE
+                AND sk.stock_quantity > 0
+          )
+        ORDER BY array_position(:preferred_ids, p.id)
+        LIMIT :limit
+    """), {
+        "preferred_ids": preferred_ids,
+        "exclude_ids": list(exclude_ids),
+        "limit": limit,
+    }).scalars().all()
+    return [int(pid) for pid in rows]
 
 
 def _compute_bmi(height_cm: float | None, weight_kg: float | None) -> float | None:
