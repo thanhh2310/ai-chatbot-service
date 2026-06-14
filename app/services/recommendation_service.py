@@ -61,7 +61,8 @@ def get_recommendations_for_user(user_id: int, limit: int = 6) -> list[int]:
             # ── 6. Tìm ứng viên và rerank bằng hành vi + review + profile ─────
             vector_candidates = _find_hybrid_candidates(conn, centroid, exclude_ids, _MAX_CANDIDATES)
             behavior_candidates = _find_behavior_candidates(conn, user_id, exclude_ids, _MAX_CANDIDATES, brand_reliable)
-            candidates = _merge_candidates(vector_candidates, behavior_candidates)
+            broad_candidates = _find_broad_appeal_candidates(conn, exclude_ids, min(_MAX_CANDIDATES, max(limit * 4, limit)))
+            candidates = _merge_candidates(vector_candidates, behavior_candidates, broad_candidates)
             reranked = _rerank_candidates(conn, user_id, candidates, seed_scores, user_profile, limit, brand_reliable)
 
             logger.info(f"✅ Recommendations user={user_id}: {[pid for pid, _ in reranked]}")
@@ -220,18 +221,6 @@ def _get_seed_scores(conn, user_id: int) -> dict[int, float]:
             JOIN order_items oi ON oi.order_id = o.id
             JOIN product_skus ps ON ps.id = oi.product_sku_id
             WHERE ors.user_id = :uid
-
-            UNION ALL
-
-            SELECT
-                CAST(TRIM(pid) AS INTEGER) AS product_id,
-                1.1 AS base_weight,
-                cm.created_at
-            FROM chatbot_sessions cs
-            JOIN chatbot_messages cm ON cm.session_id = cs.id
-            CROSS JOIN LATERAL regexp_split_to_table(COALESCE(cm.retrieved_product_ids, ''), ',') AS pid
-            WHERE cs.user_id = :uid
-              AND TRIM(pid) ~ '^[0-9]+$'
         )
         SELECT
             product_id,
@@ -371,16 +360,6 @@ def _find_behavior_candidates(
                 JOIN cart_items ci ON ci.cart_id = c.id
                 JOIN product_skus ps ON ps.id = ci.product_sku_id
                 WHERE c.user_id = :uid
-
-                UNION ALL
-
-                SELECT CAST(TRIM(pid) AS INTEGER) AS product_id,
-                       1.1 * EXP(-EXTRACT(EPOCH FROM (NOW() - cm.created_at)) / (86400.0 * 45.0))
-                FROM chatbot_sessions cs
-                JOIN chatbot_messages cm ON cm.session_id = cs.id
-                CROSS JOIN LATERAL regexp_split_to_table(COALESCE(cm.retrieved_product_ids, ''), ',') AS pid
-                WHERE cs.user_id = :uid
-                  AND TRIM(pid) ~ '^[0-9]+$'
             ) s
             JOIN products p ON p.id = s.product_id
             GROUP BY p.category_id, p.brand_id
@@ -717,6 +696,42 @@ def _get_cold_start_products(conn, limit: int, exclude_ids: set[int], user_profi
         scored.append((pid, score))
     scored.sort(key=lambda item: item[1], reverse=True)
     return [pid for pid, _ in scored[:limit]]
+
+
+def _find_broad_appeal_candidates(conn, exclude_ids: set[int], limit: int) -> list[dict]:
+    product_ids = _get_broad_appeal_products(conn, exclude_ids or {-1}, limit)
+    if not product_ids:
+        return []
+
+    rows = conn.execute(text("""
+        SELECT
+            p.id AS product_id,
+            0.85::float AS distance,
+            CONCAT_WS(' ', p.name, p.description, c.name, b.name, attrs.in_stock_attributes) AS content,
+            0.0::float AS behavior_candidate_score
+        FROM products p
+        LEFT JOIN categories c ON c.id = p.category_id
+        LEFT JOIN brands b ON b.id = p.brand_id
+        LEFT JOIN LATERAL (
+            SELECT string_agg(DISTINCT a.name || ': ' || av.value, ' ' ORDER BY a.name || ': ' || av.value) AS in_stock_attributes
+            FROM product_skus sk
+            JOIN sku_values sv ON sv.product_sku_id = sk.id
+            JOIN attribute_values av ON av.id = sv.attribute_value_id
+            JOIN attributes a ON a.id = av.attribute_id
+            WHERE sk.product_id = p.id
+              AND sk.is_active = TRUE
+              AND sk.stock_quantity > 0
+        ) attrs ON TRUE
+        WHERE p.id = ANY(:preferred_ids)
+        ORDER BY array_position(:preferred_ids, p.id)
+    """), {"preferred_ids": product_ids}).mappings().all()
+    score_by_id = {pid: float(len(product_ids) - index) for index, pid in enumerate(product_ids)}
+    candidates = []
+    for row in rows:
+        item = dict(row)
+        item["behavior_candidate_score"] = score_by_id.get(item["product_id"], 0.0)
+        candidates.append(item)
+    return candidates
 
 
 def _get_broad_appeal_products(conn, exclude_ids: set[int], limit: int) -> list[int]:

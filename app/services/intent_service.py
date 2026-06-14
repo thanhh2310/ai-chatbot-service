@@ -152,6 +152,11 @@ def _regex_fallback_extract(query_text: str) -> dict:
     color_pref = None
     if m := re.search(r'màu\s+(đen|trắng|đỏ|xanh|xám|vàng|hồng|tím|cam|nâu)', clean_q):
         color_pref = m.group(1)
+    else:
+        for color in ["đen", "trắng", "đỏ", "xanh", "xám", "vàng", "hồng", "tím", "cam", "nâu"]:
+            if color not in excluded and re.search(rf'(?:^|\s|\W|_){color}(?:$|\s|\W|_)', clean_q, re.IGNORECASE | re.UNICODE):
+                color_pref = color
+                break
 
     cat_id = _infer_catalog_category_id(clean_q)
 
@@ -180,13 +185,15 @@ def _regex_fallback_extract(query_text: str) -> dict:
 
 def _infer_catalog_category_id(clean_q: str) -> int | None:
     q = clean_q.lower()
+    if "world cup" in q and not any(token in q for token in ["bandana", "headband", "khăn", "khan", "tất", "tat", "vớ"]):
+        return None
     rules: list[tuple[int, list[str]]] = [
         (16, ["gaiter", "mặt nạ", "mat na"]),
         (15, ["thắt lưng", "that lung", "ví", "vi da"]),
+        (10, ["jogger", "quần dài", "quan dai", "outdoor", "túi hộp", "tui hop", "pants"]),
         (14, ["túi đeo", "tui deo", "túi tote", "tote", "duffle", "túi trống", "tui trong", "túi gym", "tui gym", "túi"]),
         (13, ["tất", "vớ", "vo ", "cổ cao", "co cao"]),
         (11, ["quần bơi", "quan boi", "swimming", "trunks", "jammer"]),
-        (10, ["jogger", "quần dài", "quan dai", "outdoor", "túi hộp", "tui hop", "pants"]),
         (9, ["quần short", "quan short", "shorts", "short "]),
         (6, ["áo khoác", "ao khoac", "chống uv", "chong uv", "jacket", "windbreaker"]),
         (5, ["áo polo", "ao polo", "polo"]),

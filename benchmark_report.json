@@ -1,23 +1,23 @@
 {
   "base_url": "http://localhost:5001/api/ai",
-  "generated_at_unix": 1781356515,
+  "generated_at_unix": 1781413819,
   "search": {
     "latency": {
       "count": 50,
       "success": 50,
       "errors": 0,
       "error_rate": 0.0,
-      "avg_ms": 647.5,
-      "min_ms": 446.09,
-      "p50_ms": 534.81,
-      "p95_ms": 930.62,
-      "max_ms": 3602.39
+      "avg_ms": 401.5,
+      "min_ms": 303.83,
+      "p50_ms": 329.74,
+      "p95_ms": 498.73,
+      "max_ms": 2024.08
     },
     "quality": {
-      "precision_at_k": 0.411,
-      "recall_at_k": 0.757,
-      "hit_at_k": 0.86,
-      "mrr": 0.8117,
+      "precision_at_k": 0.8095,
+      "recall_at_k": 0.8815,
+      "hit_at_k": 0.98,
+      "mrr": 0.98,
       "evaluated_cases": 50
     },
     "details": [
@@ -26,10 +26,10 @@
         "query": "áo thun nam thể thao thoáng khí",
         "predicted_product_ids": [
           1,
-          37,
-          47,
+          2,
           3,
-          2
+          5,
+          4
         ],
         "expected_product_ids": [
           1,
@@ -38,11 +38,11 @@
           4,
           5
         ],
-        "latency_ms": 3602.39,
+        "latency_ms": 2024.08,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.6,
-        "recall_at_k": 0.6,
+        "precision_at_k": 1.0,
+        "recall_at_k": 1.0,
         "hit_at_k": 1.0,
         "mrr": 1.0
       },
@@ -50,11 +50,11 @@
         "name": "ao-den-size-xl",
         "query": "áo màu đen size XL còn hàng",
         "predicted_product_ids": [
+          4,
           40,
           11,
-          4,
           5,
-          37
+          47
         ],
         "expected_product_ids": [
           4,
@@ -62,7 +62,7 @@
           11,
           40
         ],
-        "latency_ms": 491.66,
+        "latency_ms": 471.54,
         "ok": true,
         "error": null,
         "precision_at_k": 0.8,
@@ -75,13 +75,13 @@
         "query": "áo nữ size M còn hàng",
         "predicted_product_ids": [
           25,
+          19,
+          20,
           26,
           24,
-          21,
-          20,
-          19,
           22,
-          9
+          28,
+          15
         ],
         "expected_product_ids": [
           19,
@@ -93,11 +93,11 @@
           28,
           29
         ],
-        "latency_ms": 470.07,
+        "latency_ms": 1070.27,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.75,
-        "recall_at_k": 0.75,
+        "precision_at_k": 0.875,
+        "recall_at_k": 0.875,
         "hit_at_k": 1.0,
         "mrr": 1.0
       },
@@ -105,33 +105,33 @@
         "name": "so-mi-trang-size-m",
         "query": "áo sơ mi trắng size M",
         "predicted_product_ids": [
-          9,
           15,
           8,
-          13,
-          12
+          12,
+          17,
+          7
         ],
         "expected_product_ids": [
           7,
           15
         ],
-        "latency_ms": 446.09,
+        "latency_ms": 344.72,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.2,
-        "recall_at_k": 0.5,
+        "precision_at_k": 0.4,
+        "recall_at_k": 1.0,
         "hit_at_k": 1.0,
-        "mrr": 0.5
+        "mrr": 1.0
       },
       {
         "name": "polo-nam-the-thao",
         "query": "áo polo nam thể thao",
         "predicted_product_ids": [
           31,
-          47,
-          37,
-          5,
-          1
+          33,
+          32,
+          34,
+          18
         ],
         "expected_product_ids": [
           18,
@@ -140,57 +140,7 @@
           33,
           34
         ],
-        "latency_ms": 462.31,
-        "ok": true,
-        "error": null,
-        "precision_at_k": 0.2,
-        "recall_at_k": 0.2,
-        "hit_at_k": 1.0,
-        "mrr": 1.0
-      },
-      {
-        "name": "quan-short-nam",
-        "query": "quần short nam chạy bộ tập gym",
-        "predicted_product_ids": [
-          42,
-          41,
-          45,
-          44,
-          38
-        ],
-        "expected_product_ids": [
-          43,
-          44,
-          45,
-          46,
-          47
-        ],
-        "latency_ms": 693.36,
-        "ok": true,
-        "error": null,
-        "precision_at_k": 0.4,
-        "recall_at_k": 0.4,
-        "hit_at_k": 1.0,
-        "mrr": 0.3333
-      },
-      {
-        "name": "quan-dai-nam",
-        "query": "quần dài nam thể thao outdoor",
-        "predicted_product_ids": [
-          51,
-          52,
-          50,
-          49,
-          48
-        ],
-        "expected_product_ids": [
-          48,
-          49,
-          50,
-          51,
-          52
-        ],
-        "latency_ms": 489.79,
+        "latency_ms": 317.15,
         "ok": true,
         "error": null,
         "precision_at_k": 1.0,
@@ -199,14 +149,61 @@
         "mrr": 1.0
       },
       {
+        "name": "quan-short-nam",
+        "query": "quần short nam chạy bộ tập gym",
+        "predicted_product_ids": [
+          45,
+          44,
+          46,
+          43,
+          47
+        ],
+        "expected_product_ids": [
+          43,
+          44,
+          45,
+          46,
+          47
+        ],
+        "latency_ms": 474.28,
+        "ok": true,
+        "error": null,
+        "precision_at_k": 1.0,
+        "recall_at_k": 1.0,
+        "hit_at_k": 1.0,
+        "mrr": 1.0
+      },
+      {
+        "name": "quan-dai-nam",
+        "query": "quần dài nam thể thao outdoor",
+        "predicted_product_ids": [
+          51,
+          52
+        ],
+        "expected_product_ids": [
+          48,
+          49,
+          50,
+          51,
+          52
+        ],
+        "latency_ms": 312.52,
+        "ok": true,
+        "error": null,
+        "precision_at_k": 1.0,
+        "recall_at_k": 0.4,
+        "hit_at_k": 1.0,
+        "mrr": 1.0
+      },
+      {
         "name": "vo-tat-nam",
         "query": "tất vớ nam bóng đá chạy bộ",
         "predicted_product_ids": [
-          61,
-          60,
-          59,
           58,
-          42
+          59,
+          60,
+          61,
+          57
         ],
         "expected_product_ids": [
           57,
@@ -215,11 +212,11 @@
           60,
           61
         ],
-        "latency_ms": 551.01,
+        "latency_ms": 318.26,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.8,
-        "recall_at_k": 0.8,
+        "precision_at_k": 1.0,
+        "recall_at_k": 1.0,
         "hit_at_k": 1.0,
         "mrr": 1.0
       },
@@ -229,9 +226,9 @@
         "predicted_product_ids": [
           68,
           69,
-          67,
           66,
-          39
+          67,
+          71
         ],
         "expected_product_ids": [
           66,
@@ -239,7 +236,7 @@
           68,
           69
         ],
-        "latency_ms": 860.03,
+        "latency_ms": 313.81,
         "ok": true,
         "error": null,
         "precision_at_k": 0.8,
@@ -253,20 +250,18 @@
         "predicted_product_ids": [
           26,
           28,
-          25,
-          24,
-          23
+          29
         ],
         "expected_product_ids": [
           26,
           28,
           29
         ],
-        "latency_ms": 495.81,
+        "latency_ms": 383.24,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.4,
-        "recall_at_k": 0.6667,
+        "precision_at_k": 1.0,
+        "recall_at_k": 1.0,
         "hit_at_k": 1.0,
         "mrr": 1.0
       },
@@ -276,9 +271,8 @@
         "predicted_product_ids": [
           36,
           35,
-          38,
           37,
-          3
+          38
         ],
         "expected_product_ids": [
           35,
@@ -286,10 +280,10 @@
           37,
           38
         ],
-        "latency_ms": 522.19,
+        "latency_ms": 429.78,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.8,
+        "precision_at_k": 1.0,
         "recall_at_k": 1.0,
         "hit_at_k": 1.0,
         "mrr": 1.0
@@ -299,9 +293,8 @@
         "query": "áo sát nách tank top nam tập gym",
         "predicted_product_ids": [
           40,
-          23,
-          42,
           41,
+          42,
           39
         ],
         "expected_product_ids": [
@@ -310,10 +303,10 @@
           41,
           42
         ],
-        "latency_ms": 815.96,
+        "latency_ms": 336.66,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.8,
+        "precision_at_k": 1.0,
         "recall_at_k": 1.0,
         "hit_at_k": 1.0,
         "mrr": 1.0
@@ -324,19 +317,18 @@
         "predicted_product_ids": [
           53,
           55,
-          56,
-          51,
-          50
+          54,
+          56
         ],
         "expected_product_ids": [
           53,
           55,
           56
         ],
-        "latency_ms": 610.26,
+        "latency_ms": 365.2,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.6,
+        "precision_at_k": 0.75,
         "recall_at_k": 1.0,
         "hit_at_k": 1.0,
         "mrr": 1.0
@@ -347,15 +339,15 @@
         "predicted_product_ids": [
           11,
           17,
-          38,
-          37,
-          33
+          8,
+          7,
+          6
         ],
         "expected_product_ids": [
           11,
           17
         ],
-        "latency_ms": 988.37,
+        "latency_ms": 352.68,
         "ok": true,
         "error": null,
         "precision_at_k": 0.4,
@@ -368,20 +360,19 @@
         "query": "áo thun nữ chạy bộ thể thao",
         "predicted_product_ids": [
           22,
-          29,
           20,
           19,
-          3
+          21
         ],
         "expected_product_ids": [
           19,
           20,
           22
         ],
-        "latency_ms": 504.49,
+        "latency_ms": 344.35,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.6,
+        "precision_at_k": 0.75,
         "recall_at_k": 1.0,
         "hit_at_k": 1.0,
         "mrr": 1.0
@@ -390,34 +381,31 @@
         "name": "jogger-the-thao",
         "query": "quần jogger thể thao nam tập gym",
         "predicted_product_ids": [
-          37,
-          5,
-          38,
           49,
-          39
+          50
         ],
         "expected_product_ids": [
           48,
           49,
           50
         ],
-        "latency_ms": 684.78,
+        "latency_ms": 319.41,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.2,
-        "recall_at_k": 0.3333,
+        "precision_at_k": 1.0,
+        "recall_at_k": 0.6667,
         "hit_at_k": 1.0,
-        "mrr": 0.25
+        "mrr": 1.0
       },
       {
         "name": "ao-so-mi-cotton",
         "query": "áo sơ mi cotton dài tay nam",
         "predicted_product_ids": [
           6,
+          7,
           10,
-          9,
           13,
-          7
+          15
         ],
         "expected_product_ids": [
           6,
@@ -431,7 +419,7 @@
           15,
           17
         ],
-        "latency_ms": 470.6,
+        "latency_ms": 443.04,
         "ok": true,
         "error": null,
         "precision_at_k": 1.0,
@@ -445,9 +433,9 @@
         "predicted_product_ids": [
           66,
           67,
-          68,
-          69,
-          26
+          71,
+          70,
+          68
         ],
         "expected_product_ids": [
           66,
@@ -456,11 +444,11 @@
           70,
           71
         ],
-        "latency_ms": 501.31,
+        "latency_ms": 336.03,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.6,
-        "recall_at_k": 0.6,
+        "precision_at_k": 0.8,
+        "recall_at_k": 0.8,
         "hit_at_k": 1.0,
         "mrr": 1.0
       },
@@ -468,65 +456,57 @@
         "name": "phu-kien-chay-bo",
         "query": "phụ kiện chạy bộ gaiter mặt nạ",
         "predicted_product_ids": [
-          45,
-          44,
-          20,
-          42,
-          41
+          79,
+          78
         ],
         "expected_product_ids": [
           78,
           79
         ],
-        "latency_ms": 536.37,
+        "latency_ms": 303.83,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.0,
-        "recall_at_k": 0.0,
-        "hit_at_k": 0.0,
-        "mrr": 0.0
+        "precision_at_k": 1.0,
+        "recall_at_k": 1.0,
+        "hit_at_k": 1.0,
+        "mrr": 1.0
       },
       {
         "name": "that-lung-nam-da-bo",
         "query": "thắt lưng nam da bò",
         "predicted_product_ids": [
-          48,
-          35,
-          10,
-          50,
-          51
+          75,
+          76,
+          77
         ],
         "expected_product_ids": [
           75,
           76,
           77
         ],
-        "latency_ms": 456.41,
+        "latency_ms": 324.05,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.0,
-        "recall_at_k": 0.0,
-        "hit_at_k": 0.0,
-        "mrr": 0.0
+        "precision_at_k": 1.0,
+        "recall_at_k": 1.0,
+        "hit_at_k": 1.0,
+        "mrr": 1.0
       },
       {
         "name": "ao-polo-xanh-navy",
         "query": "áo polo nam màu xanh navy",
         "predicted_product_ids": [
           34,
-          33,
-          45,
-          38,
-          37
+          33
         ],
         "expected_product_ids": [
           33,
           34
         ],
-        "latency_ms": 537.07,
+        "latency_ms": 345.5,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.4,
+        "precision_at_k": 1.0,
         "recall_at_k": 1.0,
         "hit_at_k": 1.0,
         "mrr": 1.0
@@ -535,24 +515,22 @@
         "name": "ao-singlet-nu-pickleball",
         "query": "áo singlet nữ pickleball thể thao",
         "predicted_product_ids": [
-          26,
           25,
           24,
-          23,
-          28
+          23
         ],
         "expected_product_ids": [
           23,
           24,
           25
         ],
-        "latency_ms": 504.93,
+        "latency_ms": 411.84,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.6,
+        "precision_at_k": 1.0,
         "recall_at_k": 1.0,
         "hit_at_k": 1.0,
-        "mrr": 0.5
+        "mrr": 1.0
       },
       {
         "name": "ao-den-nam-size-2xl",
@@ -560,15 +538,15 @@
         "predicted_product_ids": [
           4,
           5,
-          38,
-          37,
-          48
+          48,
+          9,
+          35
         ],
         "expected_product_ids": [
           4,
           5
         ],
-        "latency_ms": 1164.62,
+        "latency_ms": 462.23,
         "ok": true,
         "error": null,
         "precision_at_k": 0.4,
@@ -580,23 +558,20 @@
         "name": "headband-khan-tap",
         "query": "headband khăn tập gym thể thao",
         "predicted_product_ids": [
-          68,
-          39,
-          37,
-          28,
-          26
+          84,
+          80
         ],
         "expected_product_ids": [
           84,
           85
         ],
-        "latency_ms": 719.83,
+        "latency_ms": 326.71,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.0,
-        "recall_at_k": 0.0,
-        "hit_at_k": 0.0,
-        "mrr": 0.0
+        "precision_at_k": 0.5,
+        "recall_at_k": 0.5,
+        "hit_at_k": 1.0,
+        "mrr": 1.0
       },
       {
         "name": "quan-short-den-nam",
@@ -614,7 +589,7 @@
           46,
           47
         ],
-        "latency_ms": 657.84,
+        "latency_ms": 326.47,
         "ok": true,
         "error": null,
         "precision_at_k": 0.8,
@@ -626,20 +601,16 @@
         "name": "ao-thun-xam-nam",
         "query": "áo thun nam màu xám",
         "predicted_product_ids": [
-          4,
-          46,
-          45,
-          8,
-          32
+          4
         ],
         "expected_product_ids": [
           4,
           9
         ],
-        "latency_ms": 855.54,
+        "latency_ms": 319.85,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.2,
+        "precision_at_k": 1.0,
         "recall_at_k": 0.5,
         "hit_at_k": 1.0,
         "mrr": 1.0
@@ -651,14 +622,14 @@
           12,
           11,
           8,
-          10,
-          9
+          7,
+          6
         ],
         "expected_product_ids": [
           11,
           12
         ],
-        "latency_ms": 563.6,
+        "latency_ms": 326.12,
         "ok": true,
         "error": null,
         "precision_at_k": 0.4,
@@ -671,15 +642,14 @@
         "query": "găng tay chống uv nắng thể thao",
         "predicted_product_ids": [
           36,
-          28,
           37,
-          5,
-          47
+          35,
+          38
         ],
         "expected_product_ids": [
           83
         ],
-        "latency_ms": 575.63,
+        "latency_ms": 322.45,
         "ok": true,
         "error": null,
         "precision_at_k": 0.0,
@@ -692,10 +662,7 @@
         "query": "áo polo cotton pique nam",
         "predicted_product_ids": [
           32,
-          33,
-          34,
-          31,
-          18
+          33
         ],
         "expected_product_ids": [
           31,
@@ -703,11 +670,11 @@
           33,
           34
         ],
-        "latency_ms": 590.78,
+        "latency_ms": 314.74,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.8,
-        "recall_at_k": 1.0,
+        "precision_at_k": 1.0,
+        "recall_at_k": 0.5,
         "hit_at_k": 1.0,
         "mrr": 1.0
       },
@@ -715,51 +682,43 @@
         "name": "bo-chan-the-thao",
         "query": "bó chân thể thao tập gym",
         "predicted_product_ids": [
-          68,
-          39,
-          37,
-          26,
-          28
+          82
         ],
         "expected_product_ids": [
           82
         ],
-        "latency_ms": 490.06,
+        "latency_ms": 324.07,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.0,
-        "recall_at_k": 0.0,
-        "hit_at_k": 0.0,
-        "mrr": 0.0
+        "precision_at_k": 1.0,
+        "recall_at_k": 1.0,
+        "hit_at_k": 1.0,
+        "mrr": 1.0
       },
       {
         "name": "tui-deo-hong",
         "query": "túi đeo hông đa năng chạy bộ",
         "predicted_product_ids": [
-          66,
-          61,
-          45,
-          44,
-          42
+          81
         ],
         "expected_product_ids": [
           81
         ],
-        "latency_ms": 564.88,
+        "latency_ms": 318.59,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.0,
-        "recall_at_k": 0.0,
-        "hit_at_k": 0.0,
-        "mrr": 0.0
+        "precision_at_k": 1.0,
+        "recall_at_k": 1.0,
+        "hit_at_k": 1.0,
+        "mrr": 1.0
       },
       {
         "name": "ao-nu-do",
         "query": "áo nữ màu đỏ thể thao",
         "predicted_product_ids": [
           19,
-          39,
           29,
+          39,
           3,
           12
         ],
@@ -769,7 +728,7 @@
           29,
           39
         ],
-        "latency_ms": 581.84,
+        "latency_ms": 405.66,
         "ok": true,
         "error": null,
         "precision_at_k": 0.8,
@@ -782,18 +741,17 @@
         "query": "tanktop nam màu đỏ chạy bộ",
         "predicted_product_ids": [
           39,
-          3,
-          29,
+          41,
           42,
-          41
+          40
         ],
         "expected_product_ids": [
           39
         ],
-        "latency_ms": 647.89,
+        "latency_ms": 315.27,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.2,
+        "precision_at_k": 0.25,
         "recall_at_k": 1.0,
         "hit_at_k": 1.0,
         "mrr": 1.0
@@ -802,19 +760,15 @@
         "name": "so-mi-overshirt",
         "query": "áo overshirt cotton nam",
         "predicted_product_ids": [
-          11,
-          32,
-          4,
-          40,
-          12
+          11
         ],
         "expected_product_ids": [
           11
         ],
-        "latency_ms": 468.23,
+        "latency_ms": 314.14,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.2,
+        "precision_at_k": 1.0,
         "recall_at_k": 1.0,
         "hit_at_k": 1.0,
         "mrr": 1.0
@@ -823,18 +777,18 @@
         "name": "quan-dai-den-nam",
         "query": "quần dài nam màu đen",
         "predicted_product_ids": [
-          51,
           48,
+          51,
           49,
-          56,
-          17
+          50,
+          52
         ],
         "expected_product_ids": [
           48,
           49,
           51
         ],
-        "latency_ms": 482.4,
+        "latency_ms": 315.88,
         "ok": true,
         "error": null,
         "precision_at_k": 0.6,
@@ -848,18 +802,17 @@
         "predicted_product_ids": [
           37,
           38,
-          5,
-          47,
-          68
+          35,
+          36
         ],
         "expected_product_ids": [
           37,
           38
         ],
-        "latency_ms": 484.44,
+        "latency_ms": 426.01,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.4,
+        "precision_at_k": 0.5,
         "recall_at_k": 1.0,
         "hit_at_k": 1.0,
         "mrr": 1.0
@@ -868,22 +821,18 @@
         "name": "tat-bong-da-co-cao",
         "query": "tất bóng đá cổ cao nam",
         "predicted_product_ids": [
-          60,
-          58,
-          59,
-          57,
-          61
+          60
         ],
         "expected_product_ids": [
           58,
           59,
           60
         ],
-        "latency_ms": 533.26,
+        "latency_ms": 326.94,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.6,
-        "recall_at_k": 1.0,
+        "precision_at_k": 1.0,
+        "recall_at_k": 0.3333,
         "hit_at_k": 1.0,
         "mrr": 1.0
       },
@@ -891,19 +840,15 @@
         "name": "tui-gym-duffle-lon",
         "query": "túi duffle lớn tập gym 38 lít",
         "predicted_product_ids": [
-          69,
-          68,
-          67,
-          66,
-          23
+          69
         ],
         "expected_product_ids": [
           69
         ],
-        "latency_ms": 546.61,
+        "latency_ms": 406.38,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.2,
+        "precision_at_k": 1.0,
         "recall_at_k": 1.0,
         "hit_at_k": 1.0,
         "mrr": 1.0
@@ -912,19 +857,15 @@
         "name": "ao-flannel-nam",
         "query": "áo sơ mi flannel cotton nam",
         "predicted_product_ids": [
-          12,
-          11,
-          6,
-          8,
-          10
+          12
         ],
         "expected_product_ids": [
           12
         ],
-        "latency_ms": 498.38,
+        "latency_ms": 357.52,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.2,
+        "precision_at_k": 1.0,
         "recall_at_k": 1.0,
         "hit_at_k": 1.0,
         "mrr": 1.0
@@ -933,19 +874,15 @@
         "name": "ao-thun-nu-vang",
         "query": "áo thun nữ màu vàng",
         "predicted_product_ids": [
-          22,
-          18,
-          10,
-          7,
-          69
+          22
         ],
         "expected_product_ids": [
           22
         ],
-        "latency_ms": 641.78,
+        "latency_ms": 330.54,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.2,
+        "precision_at_k": 1.0,
         "recall_at_k": 1.0,
         "hit_at_k": 1.0,
         "mrr": 1.0
@@ -955,20 +892,20 @@
         "query": "áo polo world cup trắng",
         "predicted_product_ids": [
           21,
-          18,
-          2,
           60,
-          57
+          57,
+          66,
+          58
         ],
         "expected_product_ids": [
           2,
           21
         ],
-        "latency_ms": 473.78,
+        "latency_ms": 518.74,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.4,
-        "recall_at_k": 1.0,
+        "precision_at_k": 0.2,
+        "recall_at_k": 0.5,
         "hit_at_k": 1.0,
         "mrr": 1.0
       },
@@ -977,19 +914,16 @@
         "query": "quần outdoor túi hộp utility nam",
         "predicted_product_ids": [
           52,
-          51,
-          50,
-          48,
-          49
+          51
         ],
         "expected_product_ids": [
           51,
           52
         ],
-        "latency_ms": 530.8,
+        "latency_ms": 319.08,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.4,
+        "precision_at_k": 1.0,
         "recall_at_k": 1.0,
         "hit_at_k": 1.0,
         "mrr": 1.0
@@ -998,21 +932,17 @@
         "name": "ao-co-tau-so-mi",
         "query": "áo sơ mi cổ tàu premium poplin",
         "predicted_product_ids": [
-          13,
-          17,
-          10,
-          7,
-          8
+          13
         ],
         "expected_product_ids": [
           13,
           17
         ],
-        "latency_ms": 552.75,
+        "latency_ms": 318.67,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.4,
-        "recall_at_k": 1.0,
+        "precision_at_k": 1.0,
+        "recall_at_k": 0.5,
         "hit_at_k": 1.0,
         "mrr": 1.0
       },
@@ -1021,19 +951,16 @@
         "query": "shorts chạy bộ nam màu xám",
         "predicted_product_ids": [
           45,
-          46,
-          20,
-          8,
-          32
+          46
         ],
         "expected_product_ids": [
           45,
           46
         ],
-        "latency_ms": 516.83,
+        "latency_ms": 322.46,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.4,
+        "precision_at_k": 1.0,
         "recall_at_k": 1.0,
         "hit_at_k": 1.0,
         "mrr": 1.0
@@ -1042,19 +969,15 @@
         "name": "ao-oxford-premium",
         "query": "áo sơ mi oxford premium dài tay",
         "predicted_product_ids": [
-          10,
-          13,
-          7,
-          17,
-          9
+          10
         ],
         "expected_product_ids": [
           10
         ],
-        "latency_ms": 504.77,
+        "latency_ms": 380.05,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.2,
+        "precision_at_k": 1.0,
         "recall_at_k": 1.0,
         "hit_at_k": 1.0,
         "mrr": 1.0
@@ -1065,14 +988,14 @@
         "predicted_product_ids": [
           9,
           13,
-          17,
           15,
+          17,
           12
         ],
         "expected_product_ids": [
           9
         ],
-        "latency_ms": 756.95,
+        "latency_ms": 328.94,
         "ok": true,
         "error": null,
         "precision_at_k": 0.2,
@@ -1084,19 +1007,15 @@
         "name": "tat-xo-ngon-chay-bo",
         "query": "tất xỏ ngón chạy bộ",
         "predicted_product_ids": [
-          61,
-          42,
-          41,
-          60,
-          59
+          61
         ],
         "expected_product_ids": [
           61
         ],
-        "latency_ms": 498.34,
+        "latency_ms": 334.21,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.2,
+        "precision_at_k": 1.0,
         "recall_at_k": 1.0,
         "hit_at_k": 1.0,
         "mrr": 1.0
@@ -1105,19 +1024,15 @@
         "name": "ao-thun-compact-cotton",
         "query": "áo thun cotton compact nam",
         "predicted_product_ids": [
-          4,
-          40,
-          6,
-          32,
-          3
+          4
         ],
         "expected_product_ids": [
           4
         ],
-        "latency_ms": 776.45,
+        "latency_ms": 326.64,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.2,
+        "precision_at_k": 1.0,
         "recall_at_k": 1.0,
         "hit_at_k": 1.0,
         "mrr": 1.0
@@ -1127,18 +1042,17 @@
         "query": "áo bra thể thao nữ màu hồng",
         "predicted_product_ids": [
           28,
-          19,
-          20,
-          21,
-          26
+          26,
+          27,
+          29
         ],
         "expected_product_ids": [
           28
         ],
-        "latency_ms": 483.32,
+        "latency_ms": 309.74,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.2,
+        "precision_at_k": 0.25,
         "recall_at_k": 1.0,
         "hit_at_k": 1.0,
         "mrr": 1.0
@@ -1147,22 +1061,18 @@
         "name": "khan-bandana-world-cup",
         "query": "khăn bandana world cup royal",
         "predicted_product_ids": [
-          66,
-          67,
-          58,
-          60,
-          59
+          80
         ],
         "expected_product_ids": [
           80
         ],
-        "latency_ms": 517.94,
+        "latency_ms": 334.82,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.0,
-        "recall_at_k": 0.0,
-        "hit_at_k": 0.0,
-        "mrr": 0.0
+        "precision_at_k": 1.0,
+        "recall_at_k": 1.0,
+        "hit_at_k": 1.0,
+        "mrr": 1.0
       }
     ]
   },
@@ -1172,17 +1082,17 @@
       "success": 10,
       "errors": 0,
       "error_rate": 0.0,
-      "avg_ms": 28.15,
-      "min_ms": 20.7,
-      "p50_ms": 27.77,
-      "p95_ms": 37.94,
-      "max_ms": 42.82
+      "avg_ms": 11.83,
+      "min_ms": 10.08,
+      "p50_ms": 11.23,
+      "p95_ms": 14.21,
+      "max_ms": 14.55
     },
     "quality": {
-      "precision_at_k": 0.2967,
-      "recall_at_k": 0.1058,
-      "hit_at_k": 0.6,
-      "mrr": 0.475,
+      "precision_at_k": 0.8833,
+      "recall_at_k": 0.3175,
+      "hit_at_k": 1.0,
+      "mrr": 1.0,
       "evaluated_cases": 10
     },
     "details": [
@@ -1190,12 +1100,12 @@
         "name": "user-1-cold-start",
         "user_id": 1,
         "predicted_product_ids": [
+          1,
+          2,
+          3,
           4,
           5,
-          37,
-          60,
-          6,
-          58
+          19
         ],
         "relevant_product_ids": [
           1,
@@ -1219,11 +1129,11 @@
           51,
           52
         ],
-        "latency_ms": 42.82,
+        "latency_ms": 14.55,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.3333,
-        "recall_at_k": 0.1,
+        "precision_at_k": 0.8333,
+        "recall_at_k": 0.25,
         "hit_at_k": 1.0,
         "mrr": 1.0
       },
@@ -1231,12 +1141,12 @@
         "name": "user-2-cold-start",
         "user_id": 2,
         "predicted_product_ids": [
-          6,
-          10,
           1,
-          29,
-          15,
-          13
+          2,
+          3,
+          4,
+          5,
+          19
         ],
         "relevant_product_ids": [
           1,
@@ -1258,11 +1168,11 @@
           37,
           38
         ],
-        "latency_ms": 29.48,
+        "latency_ms": 10.87,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.5,
-        "recall_at_k": 0.1667,
+        "precision_at_k": 0.8333,
+        "recall_at_k": 0.2778,
         "hit_at_k": 1.0,
         "mrr": 1.0
       },
@@ -1270,12 +1180,12 @@
         "name": "user-3-cold-start",
         "user_id": 3,
         "predicted_product_ids": [
-          6,
-          7,
-          10,
-          45,
-          46,
-          44
+          1,
+          2,
+          3,
+          4,
+          5,
+          19
         ],
         "relevant_product_ids": [
           1,
@@ -1295,24 +1205,24 @@
           46,
           47
         ],
-        "latency_ms": 31.97,
+        "latency_ms": 13.78,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.5,
-        "recall_at_k": 0.1875,
+        "precision_at_k": 1.0,
+        "recall_at_k": 0.375,
         "hit_at_k": 1.0,
-        "mrr": 0.25
+        "mrr": 1.0
       },
       {
         "name": "user-4-cold-start",
         "user_id": 4,
         "predicted_product_ids": [
-          10,
-          6,
-          7,
-          13,
-          17,
-          12
+          1,
+          2,
+          3,
+          4,
+          5,
+          19
         ],
         "relevant_product_ids": [
           1,
@@ -1333,24 +1243,24 @@
           60,
           61
         ],
-        "latency_ms": 24.31,
+        "latency_ms": 12.35,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.3333,
-        "recall_at_k": 0.1176,
+        "precision_at_k": 0.8333,
+        "recall_at_k": 0.2941,
         "hit_at_k": 1.0,
-        "mrr": 0.5
+        "mrr": 1.0
       },
       {
         "name": "user-5-cold-start",
         "user_id": 5,
         "predicted_product_ids": [
-          31,
-          33,
-          32,
-          34,
-          18,
-          40
+          1,
+          2,
+          3,
+          4,
+          5,
+          19
         ],
         "relevant_product_ids": [
           1,
@@ -1373,24 +1283,24 @@
           68,
           69
         ],
-        "latency_ms": 20.7,
+        "latency_ms": 10.08,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.0,
-        "recall_at_k": 0.0,
-        "hit_at_k": 0.0,
-        "mrr": 0.0
+        "precision_at_k": 0.8333,
+        "recall_at_k": 0.2632,
+        "hit_at_k": 1.0,
+        "mrr": 1.0
       },
       {
         "name": "user-6-cold-start",
         "user_id": 6,
         "predicted_product_ids": [
-          37,
-          36,
-          12,
-          38,
-          35,
-          6
+          1,
+          2,
+          3,
+          4,
+          5,
+          19
         ],
         "relevant_product_ids": [
           1,
@@ -1408,24 +1318,24 @@
           55,
           56
         ],
-        "latency_ms": 22.5,
+        "latency_ms": 13.79,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.0,
-        "recall_at_k": 0.0,
-        "hit_at_k": 0.0,
-        "mrr": 0.0
+        "precision_at_k": 0.8333,
+        "recall_at_k": 0.3571,
+        "hit_at_k": 1.0,
+        "mrr": 1.0
       },
       {
         "name": "user-7-cold-start",
         "user_id": 7,
         "predicted_product_ids": [
-          67,
-          68,
-          69,
-          66,
-          57,
-          60
+          1,
+          2,
+          3,
+          4,
+          5,
+          19
         ],
         "relevant_product_ids": [
           1,
@@ -1445,24 +1355,24 @@
           76,
           77
         ],
-        "latency_ms": 22.99,
+        "latency_ms": 10.08,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.0,
-        "recall_at_k": 0.0,
-        "hit_at_k": 0.0,
-        "mrr": 0.0
+        "precision_at_k": 0.8333,
+        "recall_at_k": 0.3125,
+        "hit_at_k": 1.0,
+        "mrr": 1.0
       },
       {
         "name": "user-8-cold-start",
         "user_id": 8,
         "predicted_product_ids": [
-          19,
-          22,
-          21,
-          20,
-          41,
-          42
+          1,
+          2,
+          3,
+          4,
+          5,
+          19
         ],
         "relevant_product_ids": [
           1,
@@ -1482,28 +1392,28 @@
           78,
           79
         ],
-        "latency_ms": 27.13,
+        "latency_ms": 10.34,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.0,
-        "recall_at_k": 0.0,
-        "hit_at_k": 0.0,
-        "mrr": 0.0
+        "precision_at_k": 0.8333,
+        "recall_at_k": 0.3125,
+        "hit_at_k": 1.0,
+        "mrr": 1.0
       },
       {
         "name": "user-1-limit-10",
         "user_id": 1,
         "predicted_product_ids": [
-          4,
-          5,
-          37,
-          60,
-          6,
-          58,
-          59,
           1,
           2,
-          3
+          3,
+          4,
+          5,
+          19,
+          20,
+          22,
+          26,
+          28
         ],
         "relevant_product_ids": [
           1,
@@ -1537,11 +1447,11 @@
           51,
           52
         ],
-        "latency_ms": 28.41,
+        "latency_ms": 11.09,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.5,
-        "recall_at_k": 0.1667,
+        "precision_at_k": 1.0,
+        "recall_at_k": 0.3333,
         "hit_at_k": 1.0,
         "mrr": 1.0
       },
@@ -1549,16 +1459,16 @@
         "name": "user-3-limit-10",
         "user_id": 3,
         "predicted_product_ids": [
-          6,
-          7,
-          10,
-          45,
-          46,
-          44,
-          47,
-          53,
-          55,
-          26
+          1,
+          2,
+          3,
+          4,
+          5,
+          19,
+          20,
+          22,
+          26,
+          28
         ],
         "relevant_product_ids": [
           1,
@@ -1587,11 +1497,11 @@
           68,
           69
         ],
-        "latency_ms": 31.23,
+        "latency_ms": 11.37,
         "ok": true,
         "error": null,
-        "precision_at_k": 0.8,
-        "recall_at_k": 0.32,
+        "precision_at_k": 1.0,
+        "recall_at_k": 0.4,
         "hit_at_k": 1.0,
         "mrr": 1.0
       }
@@ -1603,60 +1513,67 @@
       "success": 40,
       "errors": 0,
       "error_rate": 0.0,
-      "avg_ms": 3315.67,
-      "min_ms": 1025.37,
-      "p50_ms": 2525.61,
-      "p95_ms": 7625.85,
-      "max_ms": 10165.28
+      "avg_ms": 2373.93,
+      "min_ms": 911.27,
+      "p50_ms": 1866.86,
+      "p95_ms": 4041.13,
+      "max_ms": 10966.74
     },
     "details": [
       {
         "name": "body-size-question-user-1",
         "message": "Dựa trên chiều cao cân nặng của tôi, gợi ý áo quần phù hợp",
-        "latency_ms": 4495.83,
+        "latency_ms": 3753.53,
         "ok": true,
-        "reply_chars": 248,
-        "product_ids": [],
+        "reply_chars": 287,
+        "product_ids": [
+          22
+        ],
         "error": null
       },
       {
         "name": "attribute-question-user-1",
         "message": "Sản phẩm nào có màu đen và size XL còn hàng?",
-        "latency_ms": 2023.86,
+        "latency_ms": 1949.63,
         "ok": true,
-        "reply_chars": 87,
+        "reply_chars": 194,
         "product_ids": [
-          5
+          5,
+          4,
+          47,
+          40
         ],
         "error": null
       },
       {
         "name": "gym-bag-question-user-8",
         "message": "Tôi cần túi tập gym, gợi ý sản phẩm phù hợp",
-        "latency_ms": 2517.77,
+        "latency_ms": 2661.18,
         "ok": true,
-        "reply_chars": 190,
+        "reply_chars": 292,
         "product_ids": [
           68,
-          66
+          66,
+          69,
+          67
         ],
         "error": null
       },
       {
         "name": "casual-greeting",
         "message": "Chào shop, hôm nay có thể tư vấn gì cho tôi?",
-        "latency_ms": 1104.16,
+        "latency_ms": 1832.69,
         "ok": true,
-        "reply_chars": 75,
+        "reply_chars": 123,
         "product_ids": [],
         "error": null
       },
       {
         "name": "running-gear-question-user-2",
         "message": "Tôi chạy bộ thường xuyên, nên mua áo nào?",
-        "latency_ms": 2973.23,
+        "latency_ms": 1345.39,
         "ok": true,
-        "reply_chars": 158,
+        "reply_chars": 148,
         "product_ids": [
           42,
           41
@@ -1666,35 +1583,36 @@
       {
         "name": "swim-trunks-question-user-4",
         "message": "Có quần bơi nam nào size L không?",
-        "latency_ms": 1643.83,
+        "latency_ms": 3990.71,
         "ok": true,
-        "reply_chars": 189,
+        "reply_chars": 151,
         "product_ids": [
           56,
-          55,
-          53
+          53,
+          55
         ],
         "error": null
       },
       {
         "name": "polo-color-question",
         "message": "Áo polo nam có những màu nào còn hàng?",
-        "latency_ms": 4110.72,
+        "latency_ms": 3565.78,
         "ok": true,
-        "reply_chars": 194,
+        "reply_chars": 236,
         "product_ids": [
           33,
           32,
-          31
+          31,
+          34
         ],
         "error": null
       },
       {
         "name": "size-comparison-question",
         "message": "Tôi cao 175cm nặng 70kg nên mặc size gì cho áo polo?",
-        "latency_ms": 4547.2,
+        "latency_ms": 3497.37,
         "ok": true,
-        "reply_chars": 329,
+        "reply_chars": 295,
         "product_ids": [
           31
         ],
@@ -1703,9 +1621,9 @@
       {
         "name": "jacket-question-user-6",
         "message": "Gợi ý áo khoác nam chống UV đi ngoài trời",
-        "latency_ms": 2023.55,
+        "latency_ms": 1739.51,
         "ok": true,
-        "reply_chars": 167,
+        "reply_chars": 158,
         "product_ids": [
           36
         ],
@@ -1714,35 +1632,32 @@
       {
         "name": "socks-football-question",
         "message": "Tất bóng đá cổ cao nào còn hàng size 39-42?",
-        "latency_ms": 2030.17,
+        "latency_ms": 1741.72,
         "ok": true,
-        "reply_chars": 257,
+        "reply_chars": 115,
         "product_ids": [
-          60,
-          59,
-          58,
-          57
+          60
         ],
         "error": null
       },
       {
         "name": "shorts-gym-question-user-3",
         "message": "Quần short nào phù hợp tập gym giá dưới 300k?",
-        "latency_ms": 1812.56,
+        "latency_ms": 2103.65,
         "ok": true,
-        "reply_chars": 190,
+        "reply_chars": 185,
         "product_ids": [
-          46,
-          47
+          44,
+          46
         ],
         "error": null
       },
       {
         "name": "female-bra-question",
         "message": "Áo bra thể thao nữ nào hỗ trợ tốt cho chạy bộ?",
-        "latency_ms": 10165.28,
+        "latency_ms": 3061.2,
         "ok": true,
-        "reply_chars": 223,
+        "reply_chars": 240,
         "product_ids": [
           29,
           28
@@ -1752,7 +1667,7 @@
       {
         "name": "thank-you-response",
         "message": "Cảm ơn shop nhiều nha, hẹn gặp lại",
-        "latency_ms": 1025.37,
+        "latency_ms": 911.27,
         "ok": true,
         "reply_chars": 71,
         "product_ids": [],
@@ -1761,21 +1676,21 @@
       {
         "name": "tanktop-question-user-1",
         "message": "Áo tanktop nam nào thoáng khí nhất cho tập gym?",
-        "latency_ms": 3753.08,
+        "latency_ms": 1913.66,
         "ok": true,
-        "reply_chars": 155,
+        "reply_chars": 156,
         "product_ids": [
-          42,
-          41
+          41,
+          42
         ],
         "error": null
       },
       {
         "name": "jogger-recommendation-user-5",
         "message": "Tôi muốn mua quần jogger thể thao, có sản phẩm nào tốt?",
-        "latency_ms": 2020.08,
+        "latency_ms": 2710.23,
         "ok": true,
-        "reply_chars": 231,
+        "reply_chars": 251,
         "product_ids": [
           49,
           50
@@ -1785,30 +1700,31 @@
       {
         "name": "dress-shirt-question-user-4",
         "message": "Sơ mi dài tay nào phù hợp mặc đi làm hàng ngày?",
-        "latency_ms": 2767.67,
+        "latency_ms": 2203.5,
         "ok": true,
-        "reply_chars": 196,
+        "reply_chars": 179,
         "product_ids": [
-          10,
-          7
+          15,
+          9,
+          17
         ],
         "error": null
       },
       {
         "name": "brand-question",
         "message": "Shop có những thương hiệu nào? Có nike adidas không?",
-        "latency_ms": 1361.65,
+        "latency_ms": 4038.53,
         "ok": true,
-        "reply_chars": 112,
+        "reply_chars": 141,
         "product_ids": [],
         "error": null
       },
       {
         "name": "outdoor-pants-question-user-7",
         "message": "Quần outdoor có túi hộp nào cho nam?",
-        "latency_ms": 2709.33,
+        "latency_ms": 1913.71,
         "ok": true,
-        "reply_chars": 122,
+        "reply_chars": 132,
         "product_ids": [
           52
         ],
@@ -1817,9 +1733,9 @@
       {
         "name": "gift-suggestion-question",
         "message": "Tôi muốn tặng quà cho bạn nam, nên chọn gì giá tầm 200-500k?",
-        "latency_ms": 3746.57,
+        "latency_ms": 1833.26,
         "ok": true,
-        "reply_chars": 156,
+        "reply_chars": 151,
         "product_ids": [
           4,
           31
@@ -1829,32 +1745,33 @@
       {
         "name": "size-s-female-question",
         "message": "Áo nữ size S còn hàng những sản phẩm nào?",
-        "latency_ms": 5165.61,
+        "latency_ms": 1856.47,
         "ok": true,
-        "reply_chars": 59,
+        "reply_chars": 201,
         "product_ids": [
-          26
+          26,
+          19,
+          20,
+          22
         ],
         "error": null
       },
       {
         "name": "pickleball-gear-question",
         "message": "Sản phẩm nào phù hợp chơi pickleball?",
-        "latency_ms": 5968.97,
+        "latency_ms": 10966.74,
         "ok": true,
-        "reply_chars": 224,
+        "reply_chars": 252,
         "product_ids": [
-          43,
           25,
-          24,
-          23
+          24
         ],
         "error": null
       },
       {
         "name": "belt-wallet-question-user-5",
         "message": "Có thắt lưng da bò nào cho nam không?",
-        "latency_ms": 2512.81,
+        "latency_ms": 4090.53,
         "ok": true,
         "reply_chars": 82,
         "product_ids": [],
@@ -1863,13 +1780,13 @@
       {
         "name": "white-shirt-question",
         "message": "Áo sơ mi trắng dài tay nào phù hợp đi làm?",
-        "latency_ms": 6159.8,
+        "latency_ms": 3675.69,
         "ok": true,
-        "reply_chars": 216,
+        "reply_chars": 194,
         "product_ids": [
           10,
-          9,
           15,
+          9,
           7
         ],
         "error": null
@@ -1877,18 +1794,18 @@
       {
         "name": "headband-accessories-question",
         "message": "Có phụ kiện nào cho tập gym như headband khăn?",
-        "latency_ms": 1716.84,
+        "latency_ms": 1504.62,
         "ok": true,
-        "reply_chars": 86,
+        "reply_chars": 101,
         "product_ids": [],
         "error": null
       },
       {
         "name": "black-jacket-question-user-6",
         "message": "Áo khoác đen nào còn hàng size M?",
-        "latency_ms": 6562.59,
+        "latency_ms": 1861.63,
         "ok": true,
-        "reply_chars": 111,
+        "reply_chars": 187,
         "product_ids": [
           38,
           37
@@ -1898,21 +1815,20 @@
       {
         "name": "compare-products-question",
         "message": "So sánh túi gym và túi duffle, cái nào lớn hơn?",
-        "latency_ms": 2275.37,
+        "latency_ms": 1632.47,
         "ok": true,
-        "reply_chars": 344,
+        "reply_chars": 367,
         "product_ids": [
-          69,
-          68
+          69
         ],
         "error": null
       },
       {
         "name": "tshirt-nu-hong-question",
         "message": "Áo nữ màu hồng nào còn hàng?",
-        "latency_ms": 8174.26,
+        "latency_ms": 1443.45,
         "ok": true,
-        "reply_chars": 175,
+        "reply_chars": 171,
         "product_ids": [
           28,
           20
@@ -1922,32 +1838,31 @@
       {
         "name": "world-cup-collection-question",
         "message": "Có bộ sưu tập World Cup nào không?",
-        "latency_ms": 2350.63,
+        "latency_ms": 1338.52,
         "ok": true,
-        "reply_chars": 223,
+        "reply_chars": 137,
         "product_ids": [
           66,
-          21,
-          60,
-          59
+          59,
+          58
         ],
         "error": null
       },
       {
         "name": "running-mask-gaiter-question",
         "message": "Mặt nạ chạy bộ gaiter nào tốt cho chạy bộ ngoài trời?",
-        "latency_ms": 2586.81,
+        "latency_ms": 1696.22,
         "ok": true,
-        "reply_chars": 86,
+        "reply_chars": 202,
         "product_ids": [],
         "error": null
       },
       {
         "name": "navy-products-question",
         "message": "Sản phẩm nào màu xanh navy còn hàng?",
-        "latency_ms": 3619.25,
+        "latency_ms": 1371.06,
         "ok": true,
-        "reply_chars": 203,
+        "reply_chars": 192,
         "product_ids": [
           45,
           53,
@@ -1959,18 +1874,18 @@
       {
         "name": "preference-question-user-4",
         "message": "Dựa trên lịch sử của tôi, tôi thường thích sản phẩm nào?",
-        "latency_ms": 5123.42,
+        "latency_ms": 1397.6,
         "ok": true,
-        "reply_chars": 295,
+        "reply_chars": 186,
         "product_ids": [],
         "error": null
       },
       {
         "name": "summer-outfit-question",
         "message": "Gợi ý trang phục mùa hè thoáng mát cho nam",
-        "latency_ms": 2276.55,
+        "latency_ms": 1872.08,
         "ok": true,
-        "reply_chars": 158,
+        "reply_chars": 210,
         "product_ids": [
           1
         ],
@@ -1979,21 +1894,20 @@
       {
         "name": "flannel-shirt-question",
         "message": "Áo flannel cotton nào còn hàng?",
-        "latency_ms": 1549.66,
+        "latency_ms": 1232.03,
         "ok": true,
-        "reply_chars": 82,
+        "reply_chars": 87,
         "product_ids": [
-          12,
-          11
+          12
         ],
         "error": null
       },
       {
         "name": "tote-bag-question-user-7",
         "message": "Túi tote bag nào đẹp cho đi học đi chơi?",
-        "latency_ms": 7596.99,
+        "latency_ms": 2044.43,
         "ok": true,
-        "reply_chars": 164,
+        "reply_chars": 225,
         "product_ids": [
           66,
           67
@@ -2003,9 +1917,9 @@
       {
         "name": "daily-pants-question-user-8",
         "message": "Quần dài nam nào mặc hàng ngày thoải mái?",
-        "latency_ms": 2533.44,
+        "latency_ms": 3103.52,
         "ok": true,
-        "reply_chars": 173,
+        "reply_chars": 248,
         "product_ids": [
           48
         ],
@@ -2014,27 +1928,30 @@
       {
         "name": "singlet-nu-question",
         "message": "Áo singlet nữ nào phù hợp cho tập gym?",
-        "latency_ms": 2008.17,
+        "latency_ms": 1912.56,
         "ok": true,
-        "reply_chars": 86,
-        "product_ids": [],
+        "reply_chars": 195,
+        "product_ids": [
+          25,
+          24
+        ],
         "error": null
       },
       {
         "name": "price-range-under-100k",
         "message": "Sản phẩm nào giá dưới 100 nghìn đồng?",
-        "latency_ms": 1245.16,
+        "latency_ms": 1101.83,
         "ok": true,
-        "reply_chars": 102,
+        "reply_chars": 74,
         "product_ids": [],
         "error": null
       },
       {
         "name": "gray-color-products-question",
         "message": "Có sản phẩm nào màu xám còn hàng không?",
-        "latency_ms": 1956.21,
+        "latency_ms": 1337.91,
         "ok": true,
-        "reply_chars": 158,
+        "reply_chars": 115,
         "product_ids": [
           46,
           45
@@ -2044,9 +1961,9 @@
       {
         "name": "cotton-material-question",
         "message": "Áo nào làm từ vải cotton 100%?",
-        "latency_ms": 1379.4,
+        "latency_ms": 1192.08,
         "ok": true,
-        "reply_chars": 149,
+        "reply_chars": 151,
         "product_ids": [
           12,
           11
@@ -2056,9 +1973,9 @@
       {
         "name": "casual-goodbye",
         "message": "Ok em, anh đi nhé, cảm ơn",
-        "latency_ms": 3033.14,
+        "latency_ms": 1559.24,
         "ok": true,
-        "reply_chars": 50,
+        "reply_chars": 41,
         "product_ids": [],
         "error": null
       }
@@ -2069,8 +1986,8 @@
     "kind": "search",
     "total_requests": 50,
     "concurrency": 5,
-    "duration_s": 5.236,
-    "requests_per_second": 9.549,
+    "duration_s": 3.749,
+    "requests_per_second": 13.338,
     "success": 50,
     "errors": 0,
     "latency": {
@@ -2078,11 +1995,11 @@
       "success": 50,
       "errors": 0,
       "error_rate": 0.0,
-      "avg_ms": 487.91,
-      "min_ms": 1.01,
-      "p50_ms": 536.5,
-      "p95_ms": 838.6,
-      "max_ms": 1800.17
+      "avg_ms": 353.16,
+      "min_ms": 1.13,
+      "p50_ms": 312.25,
+      "p95_ms": 1203.85,
+      "max_ms": 1773.61
     }
   }
 }

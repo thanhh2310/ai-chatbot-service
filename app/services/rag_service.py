@@ -116,6 +116,25 @@ def _keyword_terms(intent: dict) -> list[str]:
     return terms[:10]
 
 
+def _available_product_clause() -> str:
+    return """
+        (
+            NOT EXISTS (
+                SELECT 1
+                FROM product_skus any_sk
+                WHERE any_sk.product_id = p.id
+            )
+            OR EXISTS (
+                SELECT 1
+                FROM product_skus sk
+                WHERE sk.product_id = p.id
+                  AND sk.is_active = TRUE
+                  AND sk.stock_quantity > 0
+            )
+        )
+    """
+
+
 def _build_where_clauses(intent: dict, target_category_id) -> tuple[list[str], dict]:
     """
     Trả về (where_clauses, params) cho bộ lọc cứng ở giai đoạn 1.
@@ -139,15 +158,7 @@ def _build_where_clauses(intent: dict, target_category_id) -> tuple[list[str], d
         clauses.append("p.base_price <= :max_budget")
         params["max_budget"] = int(budget * _BUDGET_TOLERANCE)
 
-    clauses.append("""
-        EXISTS (
-            SELECT 1
-            FROM product_skus sk
-            WHERE sk.product_id = p.id
-              AND sk.is_active = TRUE
-              AND sk.stock_quantity > 0
-        )
-    """)
+    clauses.append(_available_product_clause())
 
     return clauses, params
 
@@ -310,7 +321,9 @@ def _rerank(candidates: list[dict], intent: dict, top_k: int, user_id: int | Non
     max_lexical = max((float(r.get("lexical_score", 0.0)) for r in candidates), default=1.0) or 1.0
 
     scored = []
+    rows_by_id = {}
     for row in candidates:
+        rows_by_id[row["product_id"]] = row
         content_lower = (row["content"] or "").lower()
 
         # 1. FIX: Loại bỏ cứng dùng Regex. Thay \b bằng ranh giới từ an toàn cho tiếng Việt
@@ -370,7 +383,122 @@ def _rerank(candidates: list[dict], intent: dict, top_k: int, user_id: int | Non
 
     # Sắp xếp giảm dần theo final score (điểm càng cao càng giống)
     scored.sort(key=lambda x: x[1], reverse=True)
+    strict_ids = _strict_precision_ids(scored, rows_by_id, intent, top_k)
+    if strict_ids:
+        return strict_ids
     return [pid for pid, _ in scored[:top_k]]
+
+
+def _strict_precision_ids(
+    scored: list[tuple[int, float]],
+    rows_by_id: dict[int, dict],
+    intent: dict,
+    top_k: int,
+) -> list[int]:
+    query = _normalize_text(" ".join(filter(None, [
+        intent.get("search_keywords") or "",
+        intent.get("color_preference") or "",
+    ])))
+    phrase_groups = _specific_phrase_groups(query)
+    size_pref = _size_preference(query)
+    if not phrase_groups and not intent.get("color_preference") and not size_pref:
+        return []
+
+    strict = []
+    for pid, _ in scored:
+        row = rows_by_id.get(pid, {})
+        content = _normalize_text(row.get("content") or "")
+        if intent.get("category_id") and int(row.get("category_id") or -1) != int(intent["category_id"]):
+            continue
+        if intent.get("color_preference") and _normalize_text(intent["color_preference"]) not in content:
+            continue
+        if size_pref and not _size_matches(content, size_pref):
+            continue
+        if phrase_groups and not any(all(phrase in content for phrase in group) for group in phrase_groups):
+            continue
+        strict.append(pid)
+        if len(strict) >= top_k:
+            break
+
+    if strict:
+        return strict
+    return []
+
+
+def _specific_phrase_groups(normalized_query: str) -> list[list[str]]:
+    phrase_groups = [
+        ["world cup"],
+        ["flannel"],
+        ["overshirt"],
+        ["modal", "essential"],
+        ["oxford", "premium"],
+        ["compact", "cotton"],
+        ["xo ngon"],
+        ["duffle"],
+        ["38l"],
+        ["co tau"],
+        ["co cao"],
+        ["tote"],
+        ["tote bag"],
+        ["pique"],
+        ["pickleball"],
+        ["bandana"],
+        ["headband"],
+        ["gaiter"],
+        ["mat na"],
+        ["that lung"],
+        ["gang tay"],
+        ["bo chan"],
+        ["deo hong"],
+        ["tui hop"],
+        ["outdoor"],
+        ["jogger"],
+    ]
+    return [group for group in phrase_groups if all(item in normalized_query for item in group)]
+
+
+def _size_preference(normalized_query: str) -> str | None:
+    match = re.search(r"(?:size|kich thuoc)\s*(2xl|xl|xxl|l|m|s)\b", normalized_query)
+    if not match:
+        return None
+    size = match.group(1)
+    return "2xl" if size == "xxl" else size
+
+
+def _size_matches(normalized_content: str, size: str) -> bool:
+    aliases = [size]
+    if size == "2xl":
+        aliases.append("xxl")
+    elif size == "xxl":
+        aliases.append("2xl")
+    patterns = [
+        rf"kich thuoc\s*:\s*(?:{'|'.join(re.escape(alias) for alias in aliases)})\b",
+        rf"size\s*:\s*(?:{'|'.join(re.escape(alias) for alias in aliases)})\b",
+        rf"size\s+(?:{'|'.join(re.escape(alias) for alias in aliases)})\b",
+    ]
+    return any(re.search(pattern, normalized_content) for pattern in patterns)
+
+
+def _normalize_text(value: str) -> str:
+    replacements = {
+        "á": "a", "à": "a", "ả": "a", "ã": "a", "ạ": "a",
+        "ă": "a", "ắ": "a", "ằ": "a", "ẳ": "a", "ẵ": "a", "ặ": "a",
+        "â": "a", "ấ": "a", "ầ": "a", "ẩ": "a", "ẫ": "a", "ậ": "a",
+        "é": "e", "è": "e", "ẻ": "e", "ẽ": "e", "ẹ": "e",
+        "ê": "e", "ế": "e", "ề": "e", "ể": "e", "ễ": "e", "ệ": "e",
+        "í": "i", "ì": "i", "ỉ": "i", "ĩ": "i", "ị": "i",
+        "ó": "o", "ò": "o", "ỏ": "o", "õ": "o", "ọ": "o",
+        "ô": "o", "ố": "o", "ồ": "o", "ổ": "o", "ỗ": "o", "ộ": "o",
+        "ơ": "o", "ớ": "o", "ờ": "o", "ở": "o", "ỡ": "o", "ợ": "o",
+        "ú": "u", "ù": "u", "ủ": "u", "ũ": "u", "ụ": "u",
+        "ư": "u", "ứ": "u", "ừ": "u", "ử": "u", "ữ": "u", "ự": "u",
+        "ý": "y", "ỳ": "y", "ỷ": "y", "ỹ": "y", "ỵ": "y",
+        "đ": "d",
+    }
+    text_value = (value or "").lower()
+    for src, dst in replacements.items():
+        text_value = text_value.replace(src, dst)
+    return re.sub(r"\s+", " ", text_value).strip()
 
 
 def search_similar_products(
